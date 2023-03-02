@@ -1,0 +1,1655 @@
+# This file managed by Puppet
+global
+  chroot  /opt/clover/haproxy/var/lib
+  daemon
+  group  haproxy
+  log  127.0.0.1 local1 info alert
+  lua-load  /opt/clover/haproxy/etc/scripts/status_service.lua
+  maxconn  48000
+  nbproc  1
+  spread-checks  20
+  stats  socket /opt/clover/haproxy/var/lib/statssocket.1 user root group root mode 700 level admin process 1
+  tune.maxrewrite  4096
+  tune.ssl.cachesize  250000
+  tune.ssl.lifetime  1200
+  ulimit-n  100000
+  user  haproxy
+
+defaults
+  default-server  error-limit 2
+  log  global
+  log-format  %ci\ [%t]\ %ft\ %b/%s\ %Tq/%Tw/%Tc/%Tr/%Tt\ %ST\ %U:%B\ %CC\ %CS\ %tsc\ %ac/%fc/%bc/%sc/%rc\ %sq/%bq\ %hr\ %hs\ %{+Q}r\ %sslv:%sslc\ %[ssl_fc_sni]\ %[ssl_c_s_dn]\ %[ssl_c_serial,hex]
+  maxconn  1000
+  mode  http
+  option  abortonclose
+  option  tcp-smart-accept
+  option  tcp-smart-connect
+  option  redispatch
+  option  log-separate-errors
+  retries  2
+  timeout  connect 1s
+  timeout  http-request 9500ms
+  timeout  client 10500ms
+  timeout  server 15s
+  timeout  queue 1500ms
+
+frontend agreement
+  bind 0.0.0.0:18055
+  mode http
+  acl use-lua-health-check-script path_beg /slb_health_check
+  use_backend lua-healthcheck if use-lua-health-check-script
+  capture request header Host len 30
+  capture request header Referer len 128
+  capture request header User-Agent len 128
+  capture request header X-Clover-Request-Id len 36
+  http-request set-header X-Clover-Appenv dev if !{ req.hdr(X-Clover-Appenv) -m found }
+  acl route_ping_serve-200_acl_url url /ping
+  use_backend serve-200 if route_ping_serve-200_acl_url
+  default_backend springboot-agreement
+
+frontend cosapi
+  bind 0.0.0.0:18020
+  mode http
+  acl use-lua-health-check-script path_beg /slb_health_check
+  use_backend lua-healthcheck if use-lua-health-check-script
+  capture request header Host len 30
+  capture request header Referer len 128
+  capture request header User-Agent len 128
+  capture request header X-Clover-Request-Id len 36
+  option httpclose
+  acl route_ping_serve-200_acl_url url /ping
+  use_backend serve-200 if route_ping_serve-200_acl_url
+  default_backend api
+
+frontend dev_omnibus
+  bind 0.0.0.0:80
+  mode http
+  acl use-lua-health-check-script path_beg /slb_health_check
+  use_backend lua-healthcheck if use-lua-health-check-script
+  capture request header Host len 30
+  capture request header Referer len 128
+  capture request header User-Agent len 128
+  capture request header X-Clover-Request-Id len 36
+  acl bad_ua_header hdr_beg(user-agent) -i Fuzz\ Faster\ U\ Fool
+  acl bad_ua_header hdr_beg(user-agent) -i Nuclei
+  http-request deny if bad_ua_header
+  capture request header X-Forwarded-For len 34
+  acl route_ping_serve-200_acl_url url /ping
+  use_backend serve-200 if route_ping_serve-200_acl_url
+  acl route_web_webping_acl_url url /pay/ping
+  use_backend webping if route_web_webping_acl_url
+  acl route_authping_auth_acl_url url /auth/ping
+  use_backend auth if route_authping_auth_acl_url
+  acl route_google-generate-204_serve-204_acl_url url /generate_204
+  use_backend serve-204 if route_google-generate-204_serve-204_acl_url
+  default_backend www_https_redirect
+
+frontend dev_omnibus_ssl
+  bind 0.0.0.0:443 enable-clover-hacks ssl crt /etc/pki/tls/private/wildcard.dev.clover.com-omnibus.crt ecdhe prime256v1 no-sslv3 ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA:AES256-GCM-SHA384:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:DHE-RSA-AES128-CCM8:DHE-RSA-AES128-CCM:DHE-RSA-AES256-CCM8:DHE-RSA-AES256-CCM:AES256-GCM-SHA384:AES128-SHA:AES256-SHA:AES128-CCM8:AES128-CCM:AES256-CCM8:AES256-CCM ca-file /opt/clover/haproxy/etc/dev_combined_ca.crt verify optional
+  mode http
+  compression algo gzip
+  compression type text/html text/plain text/css application/x-javascript text/xml application/xml application/rss+xml text/javascript application/atom+xml text/calendar application/json
+  compression offload
+  maxconn 5000
+  acl use-lua-health-check-script path_beg /slb_health_check
+  use_backend lua-healthcheck if use-lua-health-check-script
+  acl allowed_http_methods method HEAD
+  acl allowed_http_methods method GET
+  acl allowed_http_methods method POST
+  acl allowed_http_methods method PUT
+  acl allowed_http_methods method DELETE
+  acl allowed_http_methods method OPTIONS
+  acl allowed_http_methods method PATCH
+  use_backend serve-403 if !allowed_http_methods
+  capture request header Host len 30
+  capture request header Referer len 128
+  capture request header User-Agent len 128
+  capture request header X-Clover-Request-Id len 36
+  acl bad_ua_header hdr_beg(user-agent) -i Fuzz\ Faster\ U\ Fool
+  acl bad_ua_header hdr_beg(user-agent) -i Nuclei
+  http-request deny if bad_ua_header
+  option forwardfor
+  http-request set-header X-Forwarded-Proto https
+  http-request set-header X-Clover-Appenv dev::stg3
+  reqidel ^X-Forwarded-For:.*
+  http-request set-header X-Cert-DN %[ssl_c_s_dn]
+  reqidel ^X-Cert-DN:\ *$
+  http-request set-header X-Cert-Serial %[ssl_c_serial,hex]
+  reqidel ^X-Cert-Serial:\ *$
+  reqidel ^X-Clover-Capability:.*
+  reqidel ^X-Envoy-Internal:.*
+  reqidel ^X-Forwarded-Base64Certificate:.*
+  reqidel ^X-Forwarded-Client-Cert:.*
+  timeout http-request 20s
+  timeout client 21s
+  errorfile 408 /dev/null
+  http-response set-header X-XSS-Protection 1;\ mode=block
+  http-response set-header X-Content-Type-Options nosniff
+  reqrep ^([^\ ]*)\ /r/(.*) \1\ /cos/v1/r/\2
+  reqrep ^([^\ ]*)\ /p/(.*) \1\ /v2/tx/p/\2
+  reqrep ^([^\ ]*)\ /(tx/(p|r|c)/.*) \1\ /v2/\2
+  reqrep ^([^\ ]*)\ /web/(.*) \1\ /\2
+  reqrep ^([^\ ]*)\ /oauth/token(.*) \1\ /cos/v1/oauth/token\2
+  acl good_partner hdr_end(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=cat.fdcbusinessservices.com
+  acl good_partner hdr_end(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=postms-outbound.1dc.com
+  acl clover_internal_ip_for_dev_only src 10.0.0.0/8
+  acl clover_internal_ip_for_dev_only src 12.249.231.202/32
+  acl clover_internal_ip_for_dev_only src 12.8.240.88/29
+  acl clover_internal_ip_for_dev_only src 50.206.199.100/30
+  acl clover_internal_ip_for_dev_only src 50.225.214.128/29
+  acl clover_internal_ip_for_dev_only src 50.228.92.254/32
+  acl clover_internal_ip_for_dev_only src 65.127.237.114/32
+  acl clover_internal_ip_for_dev_only src 24.173.187.218/32
+  acl clover_internal_ip_for_dev_only src 82.141.229.200/32
+  acl clover_internal_ip_for_dev_only src 34.82.39.148/32
+  acl clover_internal_ip_for_dev_only src 34.73.4.138/32
+  acl partner_url url_beg /cos/v1/partner/fdc/create_merchant || url_beg /cos/v1/partner/fdc/shipping_info
+  use_backend serve-403 if partner_url !good_partner !clover_internal_ip_for_dev_only
+  acl partner_url2 path_beg /na-boarding-service/
+  use_backend kubernetes if partner_url2
+  acl ipg_cert hdr_end(X-Cert-DN) /C=DE/ST=Hessen/L=Bad\ Vilbel/O=First\ Data/OU=eSolutions/CN=IPG\ \xE2\x80\x93\ Clover\ Client\ Cert\ \xE2\x80\x93\ TEST
+  acl ipg_call_url url_beg /cos/v1/partner/ipg/create_merchant || url_beg /cos/v1/partner/ipg/shipping_info
+  use_backend serve-403 if ipg_call_url !ipg_cert !clover_internal_ip_for_dev_only
+  acl ipp_cert hdr(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=ipp-event-gateway-dev.app.whirlpool.aws.fisv.cloud
+  acl ipp_cert hdr(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=ipp-event-gateway-sit.app.whirlpool.aws.fisv.cloud
+  acl ipp_url url_beg /ipp/create_merchant
+  use_backend serve-403 if ipp_url !ipp_cert
+  acl good_cardconnect_client_cert hdr_beg(X-Cert-DN) /C=US/ST=PA/L=King\ of\ Prussia/O=CardConnect/OU=TechOps/CN=dev5.dev.clover.com
+  acl cardconnect_url path /v3/partner/cardconnect/merchants
+  acl cardconnect_url path_reg ^/v3/partner/cardconnect/merchants/[^/]+$
+  acl cardconnect_url path_reg ^/v3/partner/cardconnect/merchants/[^/]+/devices/[^/]+/provision$
+  acl cardconnect_url path_reg ^/v3/partner/cardconnect/merchants/[^/]+/devices/[^/]+/deprovision$
+  use_backend serve-403 if cardconnect_url !good_cardconnect_client_cert !clover_internal_ip_for_dev_only
+  acl binlookup_url url_beg /binlookupservice/
+  acl legacy_tls_protocol ssl_fc_protocol SSLv3
+  acl legacy_tls_protocol ssl_fc_protocol TLSv1
+  acl legacy_tls_protocol ssl_fc_protocol TLSv1.1
+  http-request deny if binlookup_url legacy_tls_protocol
+  acl scansource_partner_client_cert hdr_beg(X-Cert-DN) /C=US/ST=South\ Carolina/L=Greenville/O=ScanSource\ Inc./OU=POSP/CN=Clover\ PE\ Provisioning\ Cert
+  acl scansource_url path /v3/partner/scansource/merchants
+  acl scansource_url path_reg ^/v3/partner/scansource/merchants/[^/]+$
+  acl scansource_url path_reg ^/v3/partner/scansource/merchants/[^/]+/devices/[^/]+/provision$
+  acl scansource_url path_reg ^/v3/partner/scansource/merchants/[^/]+/devices/[^/]+/deprovision$
+  use_backend serve-403 if scansource_url !scansource_partner_client_cert !clover_internal_ip_for_dev_only
+  acl admin_path path_beg /admin/
+  use_backend serve-403 if admin_path !clover_internal_ip_for_dev_only
+  acl route_block_prefetching_serve-403_acl_hdr_begx-moz-i hdr_beg(x-moz) -i prefetch
+  use_backend serve-403 if route_block_prefetching_serve-403_acl_hdr_begx-moz-i
+  acl route_block_previews_serve-403_acl_hdr_begx-moz-i hdr_beg(x-moz) -i preview
+  use_backend serve-403 if route_block_previews_serve-403_acl_hdr_begx-moz-i
+  acl route_google-generate-204_serve-204_acl_url url /generate_204
+  use_backend serve-204 if route_google-generate-204_serve-204_acl_url
+  acl route_auth_auth_acl_path_beg path_beg /auth/
+  use_backend auth if route_auth_auth_acl_path_beg
+  acl route_scl-to-apigw_apigw_acl_hdrhost-i hdr(host) -i scl-stg3.dev.clover.com
+  use_backend apigw if route_scl-to-apigw_apigw_acl_hdrhost-i
+  acl route_scl_apigw_acl_path_beg path_beg /scl/
+  use_backend apigw if route_scl_apigw_acl_path_beg
+  acl route_pakms-to-apigw_apigw_acl_path_beg path_beg /pakms
+  use_backend apigw if route_pakms-to-apigw_apigw_acl_path_beg
+  acl route_push_push_acl_path_beg path_beg /push
+  use_backend push if route_push_push_acl_path_beg
+  acl route_remote-pay-ws-server_kubernetes_istio_ingress_acl_path_sub path_sub /v2/support/remote_pay
+  use_backend kubernetes_istio_ingress if route_remote-pay-ws-server_kubernetes_istio_ingress_acl_path_sub
+  acl route_support_support_acl_path_beg path_beg /support
+  use_backend support if route_support_support_acl_path_beg
+  acl route_support_remote_pay_support_acl_path_sub path_sub /support/remote_pay
+  use_backend support if route_support_remote_pay_support_acl_path_sub
+  acl route_rom_web_acl_path_beg path_beg /v2/rom
+  acl route_rom_web_acl_path_beg path_beg /v2/apk
+  acl route_rom_web_acl_path_beg path_beg /v2/image
+  use_backend web if route_rom_web_acl_path_beg
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/developer/app
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/internal/apps
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/internal/performance
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/internal/rom
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/android_apps
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/apks/rescan
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/public/anrs
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/public/crashes
+  acl route_no_clue_apk_acl_path_beg path_beg /v3/internal/crashes/
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/anr
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/crash
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/rom/reports
+  acl route_no_clue_apk_acl_path_beg path_beg /v3/internal/recovery_logs
+  use_backend apk if route_no_clue_apk_acl_path_beg
+  acl route_large_apks_apk_acl_path_end path_end /large_apks
+  use_backend apk if route_large_apks_apk_acl_path_end
+  acl route_files_and_junk_apk_acl_path_sub path_sub /brand_assets
+  acl route_files_and_junk_apk_acl_path_sub path_sub /logos/
+  use_backend apk if route_files_and_junk_apk_acl_path_sub
+  acl route_developer_shaped_files_apk_acl_path_reg path_reg /v3/developers/.*?/apps/.*?/(apks|android_versions|cover|banner|revisions/icon)
+  use_backend apk if route_developer_shaped_files_apk_acl_path_reg
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/rom
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/apk/
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/image/
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/unapproved_apk/
+  use_backend web if route_rom_shaped_things_web_acl_path_beg
+  acl route_accor_wifi_apk_acl_url url /v2/ca/crls/accor_wifi.crl.pem
+  use_backend apk if route_accor_wifi_apk_acl_url
+  acl route_ping_serve-200_acl_url url /ping
+  use_backend serve-200 if route_ping_serve-200_acl_url
+  acl route_growth-api_kubernetes_istio_ingress-growth-api_acl_path_beg path_beg /growth/
+  use_backend kubernetes_istio_ingress-growth-api if route_growth-api_kubernetes_istio_ingress-growth-api_acl_path_beg
+  acl route_clovercapital_clovercapital_acl_path_beg path_beg /clovercapital/
+  use_backend clovercapital if route_clovercapital_clovercapital_acl_path_beg
+  acl route_deviceserializer_kubernetes_acl_path_beg path_beg /deviceserializer/
+  use_backend kubernetes if route_deviceserializer_kubernetes_acl_path_beg
+  acl route_dataprotection_springboot-dataprotection_acl_path_beg path_beg /dataprotection/
+  use_backend springboot-dataprotection if route_dataprotection_springboot-dataprotection_acl_path_beg
+  acl route_binlookupservice_springboot-binlookupservice_acl_path_beg path_beg /binlookupservice/
+  use_backend springboot-binlookupservice if route_binlookupservice_springboot-binlookupservice_acl_path_beg
+  acl route_partnervas_springboot-partnervas_acl_path_beg path_beg /partnervas/
+  use_backend springboot-partnervas if route_partnervas_springboot-partnervas_acl_path_beg
+  acl route_oloservice_springboot-oloservice_acl_path_beg path_beg /oloservice/
+  use_backend springboot-oloservice if route_oloservice_springboot-oloservice_acl_path_beg
+  acl route_cgosupport_springboot-cgosupport_acl_path_beg path_beg /cgosupport/
+  use_backend springboot-cgosupport if route_cgosupport_springboot-cgosupport_acl_path_beg
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg path_beg /genesis/private/
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 12.249.231.202/32
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 12.8.240.88/29
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 50.206.199.100/30
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 50.225.214.128/29
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 65.127.237.114
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 24.173.187.218
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 82.141.229.200
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 34.82.39.148/32
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 34.73.4.138/32
+  use_backend serve-403 if route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg !route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips
+  use_backend kubernetes_istio_ingress-genesisapi if route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg
+  acl route_genesisapi_kubernetes_istio_ingress-genesisapi_acl_path_beg path_beg /genesis/
+  use_backend kubernetes_istio_ingress-genesisapi if route_genesisapi_kubernetes_istio_ingress-genesisapi_acl_path_beg
+  acl route_disputes_springboot-disputes_acl_path_beg path_beg /disputes/v1/
+  acl route_disputes_springboot-disputes_acl_path_beg path_beg /disputes/internal/
+  use_backend springboot-disputes if route_disputes_springboot-disputes_acl_path_beg
+  acl route_cardpresentapi_springboot-cardpresentapi_acl_path_beg path_beg /connect/
+  use_backend springboot-cardpresentapi if route_cardpresentapi_springboot-cardpresentapi_acl_path_beg
+  acl route_cus_kubernetes_istio_ingress-customers_acl_path_beg path_beg /cus/
+  use_backend kubernetes_istio_ingress-customers if route_cus_kubernetes_istio_ingress-customers_acl_path_beg
+  acl route_feedback_kubernetes_istio_ingress-feedback-server-microservice_acl_path_beg path_beg /feedback/
+  use_backend kubernetes_istio_ingress-feedback-server-microservice if route_feedback_kubernetes_istio_ingress-feedback-server-microservice_acl_path_beg
+  acl route_offers-service_kubernetes_istio_ingress-offers-service_acl_path_beg path_beg /offers-service/
+  use_backend kubernetes_istio_ingress-offers-service if route_offers-service_kubernetes_istio_ingress-offers-service_acl_path_beg
+  acl route_customer-engagement_kubernetes_acl_path_beg path_beg /customer-engagement/
+  use_backend kubernetes if route_customer-engagement_kubernetes_acl_path_beg
+  acl route_feedback-server_kubernetes_acl_path_beg path_beg /feedback-server/
+  use_backend kubernetes if route_feedback-server_kubernetes_acl_path_beg
+  acl route_analytics_requests_clientanalytics_kubernetes_acl_path_beg path_beg /v2/internal/analytics
+  use_backend clientanalytics_kubernetes if route_analytics_requests_clientanalytics_kubernetes_acl_path_beg
+  acl route_notification_notification_acl_path_beg path_beg /notification/public/
+  use_backend notification if route_notification_notification_acl_path_beg
+  acl route_invoicingcheckoutservice_springboot-invoicingcheckoutservice_acl_path_beg path_beg /invoicingcheckoutservice/
+  use_backend springboot-invoicingcheckoutservice if route_invoicingcheckoutservice_springboot-invoicingcheckoutservice_acl_path_beg
+  acl route_filterservice_springboot-filterservice_acl_path_beg path_beg /filterservice/
+  use_backend springboot-filterservice if route_filterservice_springboot-filterservice_acl_path_beg
+  acl route_copilotintegration_springboot-copilotintegration_acl_path_beg path_beg /copilotintegration/
+  use_backend springboot-copilotintegration if route_copilotintegration_springboot-copilotintegration_acl_path_beg
+  acl route_mlcevent_springboot-mlcevent_acl_path_beg path_beg /mlcevent/
+  use_backend springboot-mlcevent if route_mlcevent_springboot-mlcevent_acl_path_beg
+  acl route_unifiedeventservice_springboot-unifiedeventservice_acl_path_beg path_beg /unifiedeventservice/
+  use_backend springboot-unifiedeventservice if route_unifiedeventservice_springboot-unifiedeventservice_acl_path_beg
+  acl route_oloplatform_springboot-oloplatform_acl_path_beg path_beg /oloplatform/
+  use_backend springboot-oloplatform if route_oloplatform_springboot-oloplatform_acl_path_beg
+  acl route_rom_assets_web_acl_path_sub path_sub /brand_assets
+  use_backend web if route_rom_assets_web_acl_path_sub
+  acl route_agreement_springboot-agreement_acl_path_beg path_beg /agreement/
+  use_backend springboot-agreement if route_agreement_springboot-agreement_acl_path_beg
+  acl route_securereportdecoder_springboot-securereportdecoder_acl_path_beg path_beg /securereportdecoder/
+  use_backend springboot-securereportdecoder if route_securereportdecoder_springboot-securereportdecoder_acl_path_beg
+  acl route_cloudtargetlookup_springboot-cloudtargetlookup_acl_path_beg path_beg /cloudtargetlookup/
+  acl route_cloudtargetlookup_springboot-cloudtargetlookup_acl_path_beg path_beg /v3/internal/target/
+  use_backend springboot-cloudtargetlookup if route_cloudtargetlookup_springboot-cloudtargetlookup_acl_path_beg
+  acl route_payments_client_devices_acl_path_end path_end /pay
+  acl route_payments_client_devices_acl_path_end path_end ebt/sale
+  acl route_payments_client_devices_acl_path_end path_end /void
+  acl route_payments_client_devices_acl_path_end path_end /void_card
+  acl route_payments_client_devices_acl_path_end path_end /refund
+  acl route_payments_client_devices_acl_path_end path_end /refund_card
+  acl route_payments_client_devices_acl_path_end path_end /tip_adjust
+  acl route_payments_client_devices_acl_path_end path_end /capture_preauth
+  acl route_payments_client_devices_acl_path_end path_end /balance_inquiry
+  use_backend client_devices if route_payments_client_devices_acl_path_end
+  acl route_payments_credit_client_devices_acl_path_beg path_beg /v2/credit
+  use_backend client_devices if route_payments_credit_client_devices_acl_path_beg
+  acl route_payments_giftcards_client_devices_acl_path_sub path_sub /giftcards/
+  use_backend client_devices if route_payments_giftcards_client_devices_acl_path_sub
+  acl route_payments_orders_client_devices_acl_path_reg path_reg ^/v3/merchants/[^/]+/orders/[^/]+/?
+  acl route_payments_orders_client_devices_acl_path_reg_param urlp(voidPayments) true
+  acl route_payments_orders_client_devices_acl_path_reg_param urlp(voidPayments) 1
+  use_backend client_devices if route_payments_orders_client_devices_acl_path_reg route_payments_orders_client_devices_acl_path_reg_param
+  acl route_sso_login_sso_acl_path_beg path_beg /cos/v1/dashboard/sso/login
+  use_backend sso if route_sso_login_sso_acl_path_beg
+  acl route_cos_api_acl_path_beg path_beg /cos
+  acl route_cos_api_acl_path_beg path_beg /v2
+  acl route_cos_api_acl_path_beg path_beg /v3
+  acl route_cos_api_acl_path_beg path_beg /a/
+  use_backend api if route_cos_api_acl_path_beg
+  acl route_authentication_api_acl_path_beg path_beg /authentication/
+  use_backend api if route_authentication_api_acl_path_beg
+  acl route_v3_billing_billing_acl_path_reg path_reg /v3/merchants/[^/]+/current_statement
+  acl route_v3_billing_billing_acl_path_reg path_reg /v3/merchants/[^/]+/merchant_plan_charge_estimates
+  acl route_v3_billing_billing_acl_path_reg path_reg /v3/merchants/[^/]+/summaries/merchant_plan_charge_estimates
+  use_backend billing if route_v3_billing_billing_acl_path_reg
+  acl route_billing_batch_billing_batch_acl_path_beg path_beg /billing/batch
+  use_backend billing_batch if route_billing_batch_billing_batch_acl_path_beg
+  acl route_billing_billing_acl_path_beg path_beg /billing/
+  use_backend billing if route_billing_billing_acl_path_beg
+  acl route_certrenewer_springboot-certrenewer_acl_path_beg path_beg /certrenewer
+  use_backend springboot-certrenewer if route_certrenewer_springboot-certrenewer_acl_path_beg
+  acl route_selfboardingapi_kubernetes_istio_ingress-selfboardingapi_acl_path_beg path_beg /selfboarding/
+  use_backend kubernetes_istio_ingress-selfboardingapi if route_selfboardingapi_kubernetes_istio_ingress-selfboardingapi_acl_path_beg
+  acl route_recurring_springboot-recurring_acl_path_beg path_beg /recurring/
+  use_backend springboot-recurring if route_recurring_springboot-recurring_acl_path_beg
+  acl route_rapiddeposit_springboot-rapiddeposit_acl_path_beg path_beg /rapiddeposit/
+  use_backend springboot-rapiddeposit if route_rapiddeposit_springboot-rapiddeposit_acl_path_beg
+  acl route_deliveryservice_springboot-deliveryservice_acl_path_beg path_beg /deliveryservice/
+  use_backend springboot-deliveryservice if route_deliveryservice_springboot-deliveryservice_acl_path_beg
+  acl route_partnerreporting_springboot-partnerreporting_acl_path_beg path_beg /partnerreporting/
+  use_backend springboot-partnerreporting if route_partnerreporting_springboot-partnerreporting_acl_path_beg
+  acl route_bankdetails_springboot-bankdetails_acl_path_beg path_beg /bankdetails/
+  use_backend springboot-bankdetails if route_bankdetails_springboot-bankdetails_acl_path_beg
+  acl route_webonboarding_springboot-webonboarding_acl_path_beg path_beg /webonboarding/
+  use_backend springboot-webonboarding if route_webonboarding_springboot-webonboarding_acl_path_beg
+  acl route_pzytranslationapi_springboot-pzytranslationapi_acl_path_beg path_beg /pzytranslationapi/
+  use_backend springboot-pzytranslationapi if route_pzytranslationapi_springboot-pzytranslationapi_acl_path_beg
+  acl route_pyzdashboard_springboot-pyzdashboard_acl_path_beg path_beg /pyzdashboard/
+  use_backend springboot-pyzdashboard if route_pyzdashboard_springboot-pyzdashboard_acl_path_beg
+  acl route_googlefo_springboot-googlefo_acl_path_beg path_beg /googlefo/
+  use_backend springboot-googlefo if route_googlefo_springboot-googlefo_acl_path_beg
+  acl route_earlymerchantexperience_springboot-earlymerchantexperience_acl_path_beg path_beg /earlymerchantexperience/
+  use_backend springboot-earlymerchantexperience if route_earlymerchantexperience_springboot-earlymerchantexperience_acl_path_beg
+  acl route_googlefofeeder_springboot-googlefofeeder_acl_path_beg path_beg /googlefofeeder/
+  use_backend springboot-googlefofeeder if route_googlefofeeder_springboot-googlefofeeder_acl_path_beg
+  acl route_digitalcatalog_kubernetes_istio_ingress-digitalcatalog_acl_path_beg path_beg /digitalcatalog/
+  use_backend kubernetes_istio_ingress-digitalcatalog if route_digitalcatalog_kubernetes_istio_ingress-digitalcatalog_acl_path_beg
+  acl route_consumerindexing_kubernetes_istio_ingress-consumerindexing_acl_path_beg path_beg /consumerindexing/
+  use_backend kubernetes_istio_ingress-consumerindexing if route_consumerindexing_kubernetes_istio_ingress-consumerindexing_acl_path_beg
+  acl route_na-boarding-service_kubernetes_acl_path_beg path_beg /na-boarding-service/
+  use_backend kubernetes if route_na-boarding-service_kubernetes_acl_path_beg
+  acl route_clover-boarding-service_kubernetes_acl_path_beg path_beg /clover-boarding-service/
+  use_backend kubernetes if route_clover-boarding-service_kubernetes_acl_path_beg
+  acl route_coreexperienceoperations_kubernetes_istio_ingress-core-experience-operations_acl_path_beg path_beg /coreexperienceoperations/
+  use_backend kubernetes_istio_ingress-core-experience-operations if route_coreexperienceoperations_kubernetes_istio_ingress-core-experience-operations_acl_path_beg
+  acl route_proxyservice_kubernetes_istio_ingress-proxyservice_acl_path_beg path_beg /proxyservice/
+  use_backend kubernetes_istio_ingress-proxyservice if route_proxyservice_kubernetes_istio_ingress-proxyservice_acl_path_beg
+  acl route_payeezyhcoapp_springboot-payeezyhcoapp_acl_path_beg path_beg /payeezyhcoapp/
+  use_backend springboot-payeezyhcoapp if route_payeezyhcoapp_springboot-payeezyhcoapp_acl_path_beg
+  acl route_job-execution_kubernetes_traefik_acl_path_beg path_beg /job-execution/
+  use_backend kubernetes_traefik if route_job-execution_kubernetes_traefik_acl_path_beg
+  acl route_billing-core_kubernetes_traefik_acl_path_beg path_beg /billing-core/
+  use_backend kubernetes_traefik if route_billing-core_kubernetes_traefik_acl_path_beg
+  acl route_billing-bookkeeper_kubernetes_traefik_acl_path_beg path_beg /billing-bookkeeper/
+  use_backend kubernetes_traefik if route_billing-bookkeeper_kubernetes_traefik_acl_path_beg
+  acl route_billing-event_kubernetes_traefik_acl_path_beg path_beg /billing-event/
+  use_backend kubernetes_traefik if route_billing-event_kubernetes_traefik_acl_path_beg
+  acl route_billing-event-generator_kubernetes_traefik_acl_path_beg path_beg /billing-event-generator/
+  use_backend kubernetes_traefik if route_billing-event-generator_kubernetes_traefik_acl_path_beg
+  acl route_emea-billing_kubernetes_istio_ingress-emea-billing_acl_path_beg path_beg /emea-billing/
+  use_backend kubernetes_istio_ingress-emea-billing if route_emea-billing_kubernetes_istio_ingress-emea-billing_acl_path_beg
+  acl route_crashanalytics_springboot-crashanalytics_acl_path_beg path_beg /crashanalytics/
+  use_backend springboot-crashanalytics if route_crashanalytics_springboot-crashanalytics_acl_path_beg
+  acl route_threeds_springboot-threeds_acl_path_beg path_beg /threeds/
+  use_backend springboot-threeds if route_threeds_springboot-threeds_acl_path_beg
+  acl route_developer_springboot-developer_acl_path_beg path_beg /developer/
+  use_backend springboot-developer if route_developer_springboot-developer_acl_path_beg
+  acl route_hierarchy_kubernetes_istio_ingress-hierarchy_acl_path_beg path_beg /hierarchy/
+  use_backend kubernetes_istio_ingress-hierarchy if route_hierarchy_kubernetes_istio_ingress-hierarchy_acl_path_beg
+  acl route_hierarchy-capability_kubernetes_istio_ingress-hierarchy-capability_acl_path_beg path_beg /hierarchy-capability/
+  use_backend kubernetes_istio_ingress-hierarchy-capability if route_hierarchy-capability_kubernetes_istio_ingress-hierarchy-capability_acl_path_beg
+  acl route_in-boarding-service_kubernetes_acl_path_beg path_beg /in-boarding-service/
+  use_backend kubernetes if route_in-boarding-service_kubernetes_acl_path_beg
+  acl route_boarding-history-service_kubernetes_acl_path_beg path_beg /boarding-history-service/
+  use_backend kubernetes if route_boarding-history-service_kubernetes_acl_path_beg
+  acl route_customerauth_kubernetes_istio_ingress-customerauth_acl_path_beg path_beg /customerauth/
+  use_backend kubernetes_istio_ingress-customerauth if route_customerauth_kubernetes_istio_ingress-customerauth_acl_path_beg
+  acl route_cards-service_kubernetes_istio_ingress-cards-service_acl_path_beg path_beg /cards-service/
+  use_backend kubernetes_istio_ingress-cards-service if route_cards-service_kubernetes_istio_ingress-cards-service_acl_path_beg
+  acl route_merchant-profile_kubernetes_istio_ingress-merchant-profile_acl_path_beg path_beg /merchant-profile/
+  use_backend kubernetes_istio_ingress-merchant-profile if route_merchant-profile_kubernetes_istio_ingress-merchant-profile_acl_path_beg
+  acl route_retail-service_kubernetes_istio_ingress-retail-service_acl_path_beg path_beg /retail-service/
+  use_backend kubernetes_istio_ingress-retail-service if route_retail-service_kubernetes_istio_ingress-retail-service_acl_path_beg
+  acl route_ptssettlement_springboot-ptssettlement_acl_path_beg path_beg /ptssettlement/
+  use_backend springboot-ptssettlement if route_ptssettlement_springboot-ptssettlement_acl_path_beg
+  acl route_inboarding_springboot-inboarding_acl_path_beg path_beg /inboarding/
+  use_backend springboot-inboarding if route_inboarding_springboot-inboarding_acl_path_beg
+  acl route_urlshortener_springboot-urlshortener_acl_path_beg path_beg /urlshortener/
+  use_backend springboot-urlshortener if route_urlshortener_springboot-urlshortener_acl_path_beg
+  acl route_businessdetails_springboot-businessdetails_acl_path_beg path_beg /businessdetails/
+  use_backend springboot-businessdetails if route_businessdetails_springboot-businessdetails_acl_path_beg
+  acl route_web-mobile_web_gcs_apps_dev_acl_path_reg path_reg ^/cl-mobile-opt-view(\/|$)
+  http-request set-var(txn.route_context) str("web-mobile") if route_web-mobile_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-mobile_web_gcs_apps_dev_acl_path_reg
+  acl route_web-scan-to-pay_web_gcs_apps_dev_acl_path_reg path_reg ^/scan-to-pay2(\/|$)
+  http-request set-var(txn.route_context) str("scan-to-pay") if route_web-scan-to-pay_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-scan-to-pay_web_gcs_apps_dev_acl_path_reg
+  acl route_consumer-web-profile_web_gcs_apps_dev_acl_path_reg path_reg ^/customer-profile(\/|$)
+  http-request set-var(txn.route_context) str("consumer-web-profile") if route_consumer-web-profile_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_consumer-web-profile_web_gcs_apps_dev_acl_path_reg
+  acl route_web-online-ordering-callback_web_gcs_apps_dev_acl_path_reg path_reg ^/online-ordering/__callback__$
+  http-request set-var(txn.route_context) str("web-order-ahead/public/__callback__/index.html") if route_web-online-ordering-callback_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-online-ordering-callback_web_gcs_apps_dev_acl_path_reg
+  acl route_web-order-ahead_web_gcs_apps_dev_acl_path_reg path_reg ^/online-ordering(\/|$)
+  http-request set-var(txn.route_context) str("web-order-ahead") if route_web-order-ahead_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-order-ahead_web_gcs_apps_dev_acl_path_reg
+  acl route_web-cs-portal_web_gcs_apps_dev_acl_path_reg path_reg ^/cs-(beta|home)(.*)$
+  http-request set-var(txn.route_context) str("cs-portal-web") if route_web-cs-portal_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-cs-portal_web_gcs_apps_dev_acl_path_reg
+  acl route_web-developer-platform_web_gcs_apps_dev_acl_path_reg path_reg ^/developer-home(?:/(.*))?$
+  http-request set-var(txn.route_context) str("developer-platform-web") if route_web-developer-platform_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-developer-platform_web_gcs_apps_dev_acl_path_reg
+  acl route_web-internal_web_gcs_apps_internal_dev_acl_path_reg path_reg ^/admin(?:/(.*))?$
+  http-request set-var(txn.route_context) str("web-internal") if route_web-internal_web_gcs_apps_internal_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_internal_dev if route_web-internal_web_gcs_apps_internal_dev_acl_path_reg
+  acl route_self-boarding-ui_web_gcs_apps_dev_acl_path_reg path_reg ^/apply(\/|$)
+  http-request set-var(txn.route_context) str("self-boarding-ui") if route_self-boarding-ui_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_self-boarding-ui_web_gcs_apps_dev_acl_path_reg
+  acl route_etlframework_springboot-etlframework_acl_path_beg path_beg /etlframework/
+  use_backend springboot-etlframework if route_etlframework_springboot-etlframework_acl_path_beg
+  acl route_ecomm_springboot-ecomm_acl_path_beg path_beg /ecomm/
+  use_backend springboot-ecomm if route_ecomm_springboot-ecomm_acl_path_beg
+  acl route_tokens_springboot-tokens_acl_path_beg path_beg /tokens/
+  use_backend springboot-tokens if route_tokens_springboot-tokens_acl_path_beg
+  acl route_globaldeveloperexperience_kubernetes_acl_path_beg path_beg /globaldeveloperexperience/
+  use_backend kubernetes if route_globaldeveloperexperience_kubernetes_acl_path_beg
+  acl route_fusionauth_kubernetes_istio_ingress_acl_path_beg path_beg /fusionauth/
+  use_backend kubernetes_istio_ingress if route_fusionauth_kubernetes_istio_ingress_acl_path_beg
+  acl route_reseller-services_kubernetes_istio_ingress-reseller-services_acl_path_beg path_beg /reseller-services/
+  use_backend kubernetes_istio_ingress-reseller-services if route_reseller-services_kubernetes_istio_ingress-reseller-services_acl_path_beg
+  acl route_retool_kubernetes_istio_ingress-retool_acl_path_beg path_beg /retool/
+  use_backend kubernetes_istio_ingress-retool if route_retool_kubernetes_istio_ingress-retool_acl_path_beg
+  acl route_dart-service_kubernetes_istio_ingress-dart-service_acl_path_beg path_beg /dart-service
+  use_backend kubernetes_istio_ingress-dart-service if route_dart-service_kubernetes_istio_ingress-dart-service_acl_path_beg
+  acl route_developer-service_kubernetes_istio_ingress-developer-service_acl_path_beg path_beg /developer-service/
+  use_backend kubernetes_istio_ingress-developer-service if route_developer-service_kubernetes_istio_ingress-developer-service_acl_path_beg
+  acl route_developer-apps-service_kubernetes_traefik_acl_path_beg path_beg /developer-apps-service/
+  use_backend kubernetes_traefik if route_developer-apps-service_kubernetes_traefik_acl_path_beg
+  acl route_link-inventory_kubernetes_acl_path_beg path_beg /link-inventory
+  use_backend kubernetes if route_link-inventory_kubernetes_acl_path_beg
+  acl route_inventory-service_kubernetes_istio_ingress-inventory-service_acl_path_beg path_beg /inventory-service/
+  use_backend kubernetes_istio_ingress-inventory-service if route_inventory-service_kubernetes_istio_ingress-inventory-service_acl_path_beg
+  acl route_emea-boarding-service_kubernetes_istio_ingress-emea-boarding-service_acl_path_beg path_beg /emea-boarding-service/
+  use_backend kubernetes_istio_ingress-emea-boarding-service if route_emea-boarding-service_kubernetes_istio_ingress-emea-boarding-service_acl_path_beg
+  acl route_ipblocking-service_kubernetes_istio_ingress-ipblocking-service_acl_path_beg path_beg /ipblocking-service/
+  use_backend kubernetes_istio_ingress-ipblocking-service if route_ipblocking-service_kubernetes_istio_ingress-ipblocking-service_acl_path_beg
+  acl route_fiservreporting_kubernetes_istio_ingress-fiservreporting_acl_path_beg path_beg /fiservreporting
+  use_backend kubernetes_istio_ingress-fiservreporting if route_fiservreporting_kubernetes_istio_ingress-fiservreporting_acl_path_beg
+  acl route_payment-orchestration-service_kubernetes_traefik_acl_path_beg path_beg /payment-orchestration-service/
+  use_backend kubernetes_traefik if route_payment-orchestration-service_kubernetes_traefik_acl_path_beg
+  acl route_legacy-web-react-assets_web_static_legacy_assets_dev_acl_path_beg path_beg /web-react/assets/
+  use_backend web_static_legacy_assets_dev if route_legacy-web-react-assets_web_static_legacy_assets_dev_acl_path_beg
+  acl route_taskservice_kubernetes_istio_ingress-taskservice_acl_path_beg path_beg /taskservice/
+  use_backend kubernetes_istio_ingress-taskservice if route_taskservice_kubernetes_istio_ingress-taskservice_acl_path_beg
+  acl route_dining-service_kubernetes_traefik_acl_path_beg path_beg /dining-service/
+  use_backend kubernetes_traefik if route_dining-service_kubernetes_traefik_acl_path_beg
+  acl route_fx-service_kubernetes_istio_ingress-fx-service_acl_path_beg path_beg /fx-service/
+  use_backend kubernetes_istio_ingress-fx-service if route_fx-service_kubernetes_istio_ingress-fx-service_acl_path_beg
+  acl route_web-portal_web_gcs_apps_dev_acl_path_reg path_reg ^/(dashboard|virtual-terminal|reporting-beta|login|multi-location|dining|scan-to-pay|tap-to-pay|capital|claim|agreements|disputes|privacy-policies|plan-manager|invoice-manager|onboarding|getsupport|retail-ordering|gift-cards|finances|webchat|profile|appmarket)(.*)$
+  http-request set-var(txn.route_context) str("web-portal") if route_web-portal_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-portal_web_gcs_apps_dev_acl_path_reg
+  acl route_web-checkout_web_gcs_apps_dev_acl_path_reg path_reg ^/(checkout|pay-widgets)(?:/(.*))?$
+  http-request set-var(txn.route_context) str("web-checkout") if route_web-checkout_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-checkout_web_gcs_apps_dev_acl_path_reg
+  acl route_cgosupport-service_kubernetes_istio_ingress-cgosupport-service_acl_path_beg path_beg /cgosupport-service/
+  use_backend kubernetes_istio_ingress-cgosupport-service if route_cgosupport-service_kubernetes_istio_ingress-cgosupport-service_acl_path_beg
+  acl route_clodat_kubernetes_istio_ingress-clodat_acl_path_beg path_beg /clodat/
+  use_backend kubernetes_istio_ingress-clodat if route_clodat_kubernetes_istio_ingress-clodat_acl_path_beg
+  acl route_everything_else_web_acl_hdrhost-i hdr(host) -i stg3.dev.clover.com
+  use_backend web if route_everything_else_web_acl_hdrhost-i
+  default_backend serve-404
+  http-request set-var(txn.host) hdr(Host)
+  # regex: scheme (user) (host) (port) (everything else)
+  http-response replace-header Location ^[a-zA-Z][a-zA-Z0-9+\-.]*://([a-zA-Z0-9\-._~%!$&'()*+,;=]+@)?([a-zA-A0-9\-._~%]+|\[[a-z0-9\-._~%!$&'()*+,;=:]+\])(:[0-9]+)?(.*) https://\2\4 if { status 301 } || { status 302 }
+
+frontend dev_omnibus_ssl_proxy
+  bind 0.0.0.0:8443 accept-proxy enable-clover-hacks ssl crt /etc/pki/tls/private/wildcard.dev.clover.com-omnibus.crt ecdhe prime256v1 no-sslv3 ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA:AES256-GCM-SHA384:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:DHE-RSA-AES128-CCM8:DHE-RSA-AES128-CCM:DHE-RSA-AES256-CCM8:DHE-RSA-AES256-CCM:AES256-GCM-SHA384:AES128-SHA:AES256-SHA:AES128-CCM8:AES128-CCM:AES256-CCM8:AES256-CCM ca-file /opt/clover/haproxy/etc/dev_combined_ca.crt verify optional
+  mode http
+  compression algo gzip
+  compression type text/html text/plain text/css application/x-javascript text/xml application/xml application/rss+xml text/javascript application/atom+xml text/calendar application/json
+  compression offload
+  maxconn 5000
+  acl use-lua-health-check-script path_beg /slb_health_check
+  use_backend lua-healthcheck if use-lua-health-check-script
+  acl allowed_http_methods method HEAD
+  acl allowed_http_methods method GET
+  acl allowed_http_methods method POST
+  acl allowed_http_methods method PUT
+  acl allowed_http_methods method DELETE
+  acl allowed_http_methods method OPTIONS
+  acl allowed_http_methods method PATCH
+  use_backend serve-403 if !allowed_http_methods
+  capture request header Host len 30
+  capture request header Referer len 128
+  capture request header User-Agent len 128
+  capture request header X-Clover-Request-Id len 36
+  acl bad_ua_header hdr_beg(user-agent) -i Fuzz\ Faster\ U\ Fool
+  acl bad_ua_header hdr_beg(user-agent) -i Nuclei
+  http-request deny if bad_ua_header
+  option forwardfor
+  http-request set-header X-Forwarded-Proto https
+  http-request set-header X-Clover-Appenv dev::stg3
+  reqidel ^X-Forwarded-For:.*
+  http-request set-header X-Cert-DN %[ssl_c_s_dn]
+  reqidel ^X-Cert-DN:\ *$
+  http-request set-header X-Cert-Serial %[ssl_c_serial,hex]
+  reqidel ^X-Cert-Serial:\ *$
+  reqidel ^X-Clover-Capability:.*
+  reqidel ^X-Envoy-Internal:.*
+  reqidel ^X-Forwarded-Base64Certificate:.*
+  reqidel ^X-Forwarded-Client-Cert:.*
+  timeout http-request 20s
+  timeout client 21s
+  errorfile 408 /dev/null
+  http-response set-header X-XSS-Protection 1;\ mode=block
+  http-response set-header X-Content-Type-Options nosniff
+  reqrep ^([^\ ]*)\ /r/(.*) \1\ /cos/v1/r/\2
+  reqrep ^([^\ ]*)\ /p/(.*) \1\ /v2/tx/p/\2
+  reqrep ^([^\ ]*)\ /(tx/(p|r|c)/.*) \1\ /v2/\2
+  reqrep ^([^\ ]*)\ /web/(.*) \1\ /\2
+  reqrep ^([^\ ]*)\ /oauth/token(.*) \1\ /cos/v1/oauth/token\2
+  acl good_partner hdr_end(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=cat.fdcbusinessservices.com
+  acl good_partner hdr_end(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=postms-outbound.1dc.com
+  acl clover_internal_ip_for_dev_only src 10.0.0.0/8
+  acl clover_internal_ip_for_dev_only src 12.249.231.202/32
+  acl clover_internal_ip_for_dev_only src 12.8.240.88/29
+  acl clover_internal_ip_for_dev_only src 50.206.199.100/30
+  acl clover_internal_ip_for_dev_only src 50.225.214.128/29
+  acl clover_internal_ip_for_dev_only src 50.228.92.254/32
+  acl clover_internal_ip_for_dev_only src 65.127.237.114/32
+  acl clover_internal_ip_for_dev_only src 24.173.187.218/32
+  acl clover_internal_ip_for_dev_only src 82.141.229.200/32
+  acl clover_internal_ip_for_dev_only src 34.82.39.148/32
+  acl clover_internal_ip_for_dev_only src 34.73.4.138/32
+  acl partner_url url_beg /cos/v1/partner/fdc/create_merchant || url_beg /cos/v1/partner/fdc/shipping_info
+  use_backend serve-403 if partner_url !good_partner !clover_internal_ip_for_dev_only
+  acl partner_url2 path_beg /na-boarding-service/
+  use_backend kubernetes if partner_url2
+  acl ipg_cert hdr_end(X-Cert-DN) /C=DE/ST=Hessen/L=Bad\ Vilbel/O=First\ Data/OU=eSolutions/CN=IPG\ \xE2\x80\x93\ Clover\ Client\ Cert\ \xE2\x80\x93\ TEST
+  acl ipg_call_url url_beg /cos/v1/partner/ipg/create_merchant || url_beg /cos/v1/partner/ipg/shipping_info
+  use_backend serve-403 if ipg_call_url !ipg_cert !clover_internal_ip_for_dev_only
+  acl ipp_cert hdr(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=ipp-event-gateway-dev.app.whirlpool.aws.fisv.cloud
+  acl ipp_cert hdr(X-Cert-DN) /C=US/ST=Georgia/L=Atlanta/O=First\ Data\ Corporation/CN=ipp-event-gateway-sit.app.whirlpool.aws.fisv.cloud
+  acl ipp_url url_beg /ipp/create_merchant
+  use_backend serve-403 if ipp_url !ipp_cert
+  acl good_cardconnect_client_cert hdr_beg(X-Cert-DN) /C=US/ST=PA/L=King\ of\ Prussia/O=CardConnect/OU=TechOps/CN=dev5.dev.clover.com
+  acl cardconnect_url path /v3/partner/cardconnect/merchants
+  acl cardconnect_url path_reg ^/v3/partner/cardconnect/merchants/[^/]+$
+  acl cardconnect_url path_reg ^/v3/partner/cardconnect/merchants/[^/]+/devices/[^/]+/provision$
+  acl cardconnect_url path_reg ^/v3/partner/cardconnect/merchants/[^/]+/devices/[^/]+/deprovision$
+  use_backend serve-403 if cardconnect_url !good_cardconnect_client_cert !clover_internal_ip_for_dev_only
+  acl binlookup_url url_beg /binlookupservice/
+  acl legacy_tls_protocol ssl_fc_protocol SSLv3
+  acl legacy_tls_protocol ssl_fc_protocol TLSv1
+  acl legacy_tls_protocol ssl_fc_protocol TLSv1.1
+  http-request deny if binlookup_url legacy_tls_protocol
+  acl scansource_partner_client_cert hdr_beg(X-Cert-DN) /C=US/ST=South\ Carolina/L=Greenville/O=ScanSource\ Inc./OU=POSP/CN=Clover\ PE\ Provisioning\ Cert
+  acl scansource_url path /v3/partner/scansource/merchants
+  acl scansource_url path_reg ^/v3/partner/scansource/merchants/[^/]+$
+  acl scansource_url path_reg ^/v3/partner/scansource/merchants/[^/]+/devices/[^/]+/provision$
+  acl scansource_url path_reg ^/v3/partner/scansource/merchants/[^/]+/devices/[^/]+/deprovision$
+  use_backend serve-403 if scansource_url !scansource_partner_client_cert !clover_internal_ip_for_dev_only
+  acl admin_path path_beg /admin/
+  use_backend serve-403 if admin_path !clover_internal_ip_for_dev_only
+  acl route_block_prefetching_serve-403_acl_hdr_begx-moz-i hdr_beg(x-moz) -i prefetch
+  use_backend serve-403 if route_block_prefetching_serve-403_acl_hdr_begx-moz-i
+  acl route_block_previews_serve-403_acl_hdr_begx-moz-i hdr_beg(x-moz) -i preview
+  use_backend serve-403 if route_block_previews_serve-403_acl_hdr_begx-moz-i
+  acl route_google-generate-204_serve-204_acl_url url /generate_204
+  use_backend serve-204 if route_google-generate-204_serve-204_acl_url
+  acl route_auth_auth_acl_path_beg path_beg /auth/
+  use_backend auth if route_auth_auth_acl_path_beg
+  acl route_scl-to-apigw_apigw_acl_hdrhost-i hdr(host) -i scl-stg3.dev.clover.com
+  use_backend apigw if route_scl-to-apigw_apigw_acl_hdrhost-i
+  acl route_scl_apigw_acl_path_beg path_beg /scl/
+  use_backend apigw if route_scl_apigw_acl_path_beg
+  acl route_pakms-to-apigw_apigw_acl_path_beg path_beg /pakms
+  use_backend apigw if route_pakms-to-apigw_apigw_acl_path_beg
+  acl route_push_push_acl_path_beg path_beg /push
+  use_backend push if route_push_push_acl_path_beg
+  acl route_remote-pay-ws-server_kubernetes_istio_ingress_acl_path_sub path_sub /v2/support/remote_pay
+  use_backend kubernetes_istio_ingress if route_remote-pay-ws-server_kubernetes_istio_ingress_acl_path_sub
+  acl route_support_support_acl_path_beg path_beg /support
+  use_backend support if route_support_support_acl_path_beg
+  acl route_support_remote_pay_support_acl_path_sub path_sub /support/remote_pay
+  use_backend support if route_support_remote_pay_support_acl_path_sub
+  acl route_rom_web_acl_path_beg path_beg /v2/rom
+  acl route_rom_web_acl_path_beg path_beg /v2/apk
+  acl route_rom_web_acl_path_beg path_beg /v2/image
+  use_backend web if route_rom_web_acl_path_beg
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/developer/app
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/internal/apps
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/internal/performance
+  acl route_no_clue_apk_acl_path_beg path_beg /cos/v1/dashboard/internal/rom
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/android_apps
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/apks/rescan
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/public/anrs
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/public/crashes
+  acl route_no_clue_apk_acl_path_beg path_beg /v3/internal/crashes/
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/anr
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/crash
+  acl route_no_clue_apk_acl_path_beg path_beg /v2/internal/rom/reports
+  acl route_no_clue_apk_acl_path_beg path_beg /v3/internal/recovery_logs
+  use_backend apk if route_no_clue_apk_acl_path_beg
+  acl route_large_apks_apk_acl_path_end path_end /large_apks
+  use_backend apk if route_large_apks_apk_acl_path_end
+  acl route_files_and_junk_apk_acl_path_sub path_sub /brand_assets
+  acl route_files_and_junk_apk_acl_path_sub path_sub /logos/
+  use_backend apk if route_files_and_junk_apk_acl_path_sub
+  acl route_developer_shaped_files_apk_acl_path_reg path_reg /v3/developers/.*?/apps/.*?/(apks|android_versions|cover|banner|revisions/icon)
+  use_backend apk if route_developer_shaped_files_apk_acl_path_reg
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/rom
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/apk/
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/image/
+  acl route_rom_shaped_things_web_acl_path_beg path_beg /v2/unapproved_apk/
+  use_backend web if route_rom_shaped_things_web_acl_path_beg
+  acl route_accor_wifi_apk_acl_url url /v2/ca/crls/accor_wifi.crl.pem
+  use_backend apk if route_accor_wifi_apk_acl_url
+  acl route_ping_serve-200_acl_url url /ping
+  use_backend serve-200 if route_ping_serve-200_acl_url
+  acl route_growth-api_kubernetes_istio_ingress-growth-api_acl_path_beg path_beg /growth/
+  use_backend kubernetes_istio_ingress-growth-api if route_growth-api_kubernetes_istio_ingress-growth-api_acl_path_beg
+  acl route_clovercapital_clovercapital_acl_path_beg path_beg /clovercapital/
+  use_backend clovercapital if route_clovercapital_clovercapital_acl_path_beg
+  acl route_deviceserializer_kubernetes_acl_path_beg path_beg /deviceserializer/
+  use_backend kubernetes if route_deviceserializer_kubernetes_acl_path_beg
+  acl route_dataprotection_springboot-dataprotection_acl_path_beg path_beg /dataprotection/
+  use_backend springboot-dataprotection if route_dataprotection_springboot-dataprotection_acl_path_beg
+  acl route_binlookupservice_springboot-binlookupservice_acl_path_beg path_beg /binlookupservice/
+  use_backend springboot-binlookupservice if route_binlookupservice_springboot-binlookupservice_acl_path_beg
+  acl route_partnervas_springboot-partnervas_acl_path_beg path_beg /partnervas/
+  use_backend springboot-partnervas if route_partnervas_springboot-partnervas_acl_path_beg
+  acl route_oloservice_springboot-oloservice_acl_path_beg path_beg /oloservice/
+  use_backend springboot-oloservice if route_oloservice_springboot-oloservice_acl_path_beg
+  acl route_cgosupport_springboot-cgosupport_acl_path_beg path_beg /cgosupport/
+  use_backend springboot-cgosupport if route_cgosupport_springboot-cgosupport_acl_path_beg
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg path_beg /genesis/private/
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 12.249.231.202/32
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 12.8.240.88/29
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 50.206.199.100/30
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 50.225.214.128/29
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 65.127.237.114
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 24.173.187.218
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 82.141.229.200
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 34.82.39.148/32
+  acl route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips src 34.73.4.138/32
+  use_backend serve-403 if route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg !route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg_allowed_ips
+  use_backend kubernetes_istio_ingress-genesisapi if route_genesisapi-private_kubernetes_istio_ingress-genesisapi_acl_path_beg
+  acl route_genesisapi_kubernetes_istio_ingress-genesisapi_acl_path_beg path_beg /genesis/
+  use_backend kubernetes_istio_ingress-genesisapi if route_genesisapi_kubernetes_istio_ingress-genesisapi_acl_path_beg
+  acl route_disputes_springboot-disputes_acl_path_beg path_beg /disputes/v1/
+  acl route_disputes_springboot-disputes_acl_path_beg path_beg /disputes/internal/
+  use_backend springboot-disputes if route_disputes_springboot-disputes_acl_path_beg
+  acl route_cardpresentapi_springboot-cardpresentapi_acl_path_beg path_beg /connect/
+  use_backend springboot-cardpresentapi if route_cardpresentapi_springboot-cardpresentapi_acl_path_beg
+  acl route_cus_kubernetes_istio_ingress-customers_acl_path_beg path_beg /cus/
+  use_backend kubernetes_istio_ingress-customers if route_cus_kubernetes_istio_ingress-customers_acl_path_beg
+  acl route_feedback_kubernetes_istio_ingress-feedback-server-microservice_acl_path_beg path_beg /feedback/
+  use_backend kubernetes_istio_ingress-feedback-server-microservice if route_feedback_kubernetes_istio_ingress-feedback-server-microservice_acl_path_beg
+  acl route_offers-service_kubernetes_istio_ingress-offers-service_acl_path_beg path_beg /offers-service/
+  use_backend kubernetes_istio_ingress-offers-service if route_offers-service_kubernetes_istio_ingress-offers-service_acl_path_beg
+  acl route_customer-engagement_kubernetes_acl_path_beg path_beg /customer-engagement/
+  use_backend kubernetes if route_customer-engagement_kubernetes_acl_path_beg
+  acl route_feedback-server_kubernetes_acl_path_beg path_beg /feedback-server/
+  use_backend kubernetes if route_feedback-server_kubernetes_acl_path_beg
+  acl route_analytics_requests_clientanalytics_kubernetes_acl_path_beg path_beg /v2/internal/analytics
+  use_backend clientanalytics_kubernetes if route_analytics_requests_clientanalytics_kubernetes_acl_path_beg
+  acl route_notification_notification_acl_path_beg path_beg /notification/public/
+  use_backend notification if route_notification_notification_acl_path_beg
+  acl route_invoicingcheckoutservice_springboot-invoicingcheckoutservice_acl_path_beg path_beg /invoicingcheckoutservice/
+  use_backend springboot-invoicingcheckoutservice if route_invoicingcheckoutservice_springboot-invoicingcheckoutservice_acl_path_beg
+  acl route_filterservice_springboot-filterservice_acl_path_beg path_beg /filterservice/
+  use_backend springboot-filterservice if route_filterservice_springboot-filterservice_acl_path_beg
+  acl route_copilotintegration_springboot-copilotintegration_acl_path_beg path_beg /copilotintegration/
+  use_backend springboot-copilotintegration if route_copilotintegration_springboot-copilotintegration_acl_path_beg
+  acl route_mlcevent_springboot-mlcevent_acl_path_beg path_beg /mlcevent/
+  use_backend springboot-mlcevent if route_mlcevent_springboot-mlcevent_acl_path_beg
+  acl route_unifiedeventservice_springboot-unifiedeventservice_acl_path_beg path_beg /unifiedeventservice/
+  use_backend springboot-unifiedeventservice if route_unifiedeventservice_springboot-unifiedeventservice_acl_path_beg
+  acl route_oloplatform_springboot-oloplatform_acl_path_beg path_beg /oloplatform/
+  use_backend springboot-oloplatform if route_oloplatform_springboot-oloplatform_acl_path_beg
+  acl route_rom_assets_web_acl_path_sub path_sub /brand_assets
+  use_backend web if route_rom_assets_web_acl_path_sub
+  acl route_agreement_springboot-agreement_acl_path_beg path_beg /agreement/
+  use_backend springboot-agreement if route_agreement_springboot-agreement_acl_path_beg
+  acl route_securereportdecoder_springboot-securereportdecoder_acl_path_beg path_beg /securereportdecoder/
+  use_backend springboot-securereportdecoder if route_securereportdecoder_springboot-securereportdecoder_acl_path_beg
+  acl route_cloudtargetlookup_springboot-cloudtargetlookup_acl_path_beg path_beg /cloudtargetlookup/
+  acl route_cloudtargetlookup_springboot-cloudtargetlookup_acl_path_beg path_beg /v3/internal/target/
+  use_backend springboot-cloudtargetlookup if route_cloudtargetlookup_springboot-cloudtargetlookup_acl_path_beg
+  acl route_payments_client_devices_acl_path_end path_end /pay
+  acl route_payments_client_devices_acl_path_end path_end ebt/sale
+  acl route_payments_client_devices_acl_path_end path_end /void
+  acl route_payments_client_devices_acl_path_end path_end /void_card
+  acl route_payments_client_devices_acl_path_end path_end /refund
+  acl route_payments_client_devices_acl_path_end path_end /refund_card
+  acl route_payments_client_devices_acl_path_end path_end /tip_adjust
+  acl route_payments_client_devices_acl_path_end path_end /capture_preauth
+  acl route_payments_client_devices_acl_path_end path_end /balance_inquiry
+  use_backend client_devices if route_payments_client_devices_acl_path_end
+  acl route_payments_credit_client_devices_acl_path_beg path_beg /v2/credit
+  use_backend client_devices if route_payments_credit_client_devices_acl_path_beg
+  acl route_payments_giftcards_client_devices_acl_path_sub path_sub /giftcards/
+  use_backend client_devices if route_payments_giftcards_client_devices_acl_path_sub
+  acl route_payments_orders_client_devices_acl_path_reg path_reg ^/v3/merchants/[^/]+/orders/[^/]+/?
+  acl route_payments_orders_client_devices_acl_path_reg_param urlp(voidPayments) true
+  acl route_payments_orders_client_devices_acl_path_reg_param urlp(voidPayments) 1
+  use_backend client_devices if route_payments_orders_client_devices_acl_path_reg route_payments_orders_client_devices_acl_path_reg_param
+  acl route_sso_login_sso_acl_path_beg path_beg /cos/v1/dashboard/sso/login
+  use_backend sso if route_sso_login_sso_acl_path_beg
+  acl route_cos_api_acl_path_beg path_beg /cos
+  acl route_cos_api_acl_path_beg path_beg /v2
+  acl route_cos_api_acl_path_beg path_beg /v3
+  acl route_cos_api_acl_path_beg path_beg /a/
+  use_backend api if route_cos_api_acl_path_beg
+  acl route_authentication_api_acl_path_beg path_beg /authentication/
+  use_backend api if route_authentication_api_acl_path_beg
+  acl route_v3_billing_billing_acl_path_reg path_reg /v3/merchants/[^/]+/current_statement
+  acl route_v3_billing_billing_acl_path_reg path_reg /v3/merchants/[^/]+/merchant_plan_charge_estimates
+  acl route_v3_billing_billing_acl_path_reg path_reg /v3/merchants/[^/]+/summaries/merchant_plan_charge_estimates
+  use_backend billing if route_v3_billing_billing_acl_path_reg
+  acl route_billing_batch_billing_batch_acl_path_beg path_beg /billing/batch
+  use_backend billing_batch if route_billing_batch_billing_batch_acl_path_beg
+  acl route_billing_billing_acl_path_beg path_beg /billing/
+  use_backend billing if route_billing_billing_acl_path_beg
+  acl route_certrenewer_springboot-certrenewer_acl_path_beg path_beg /certrenewer
+  use_backend springboot-certrenewer if route_certrenewer_springboot-certrenewer_acl_path_beg
+  acl route_selfboardingapi_kubernetes_istio_ingress-selfboardingapi_acl_path_beg path_beg /selfboarding/
+  use_backend kubernetes_istio_ingress-selfboardingapi if route_selfboardingapi_kubernetes_istio_ingress-selfboardingapi_acl_path_beg
+  acl route_recurring_springboot-recurring_acl_path_beg path_beg /recurring/
+  use_backend springboot-recurring if route_recurring_springboot-recurring_acl_path_beg
+  acl route_rapiddeposit_springboot-rapiddeposit_acl_path_beg path_beg /rapiddeposit/
+  use_backend springboot-rapiddeposit if route_rapiddeposit_springboot-rapiddeposit_acl_path_beg
+  acl route_deliveryservice_springboot-deliveryservice_acl_path_beg path_beg /deliveryservice/
+  use_backend springboot-deliveryservice if route_deliveryservice_springboot-deliveryservice_acl_path_beg
+  acl route_partnerreporting_springboot-partnerreporting_acl_path_beg path_beg /partnerreporting/
+  use_backend springboot-partnerreporting if route_partnerreporting_springboot-partnerreporting_acl_path_beg
+  acl route_bankdetails_springboot-bankdetails_acl_path_beg path_beg /bankdetails/
+  use_backend springboot-bankdetails if route_bankdetails_springboot-bankdetails_acl_path_beg
+  acl route_webonboarding_springboot-webonboarding_acl_path_beg path_beg /webonboarding/
+  use_backend springboot-webonboarding if route_webonboarding_springboot-webonboarding_acl_path_beg
+  acl route_pzytranslationapi_springboot-pzytranslationapi_acl_path_beg path_beg /pzytranslationapi/
+  use_backend springboot-pzytranslationapi if route_pzytranslationapi_springboot-pzytranslationapi_acl_path_beg
+  acl route_pyzdashboard_springboot-pyzdashboard_acl_path_beg path_beg /pyzdashboard/
+  use_backend springboot-pyzdashboard if route_pyzdashboard_springboot-pyzdashboard_acl_path_beg
+  acl route_googlefo_springboot-googlefo_acl_path_beg path_beg /googlefo/
+  use_backend springboot-googlefo if route_googlefo_springboot-googlefo_acl_path_beg
+  acl route_earlymerchantexperience_springboot-earlymerchantexperience_acl_path_beg path_beg /earlymerchantexperience/
+  use_backend springboot-earlymerchantexperience if route_earlymerchantexperience_springboot-earlymerchantexperience_acl_path_beg
+  acl route_googlefofeeder_springboot-googlefofeeder_acl_path_beg path_beg /googlefofeeder/
+  use_backend springboot-googlefofeeder if route_googlefofeeder_springboot-googlefofeeder_acl_path_beg
+  acl route_digitalcatalog_kubernetes_istio_ingress-digitalcatalog_acl_path_beg path_beg /digitalcatalog/
+  use_backend kubernetes_istio_ingress-digitalcatalog if route_digitalcatalog_kubernetes_istio_ingress-digitalcatalog_acl_path_beg
+  acl route_consumerindexing_kubernetes_istio_ingress-consumerindexing_acl_path_beg path_beg /consumerindexing/
+  use_backend kubernetes_istio_ingress-consumerindexing if route_consumerindexing_kubernetes_istio_ingress-consumerindexing_acl_path_beg
+  acl route_na-boarding-service_kubernetes_acl_path_beg path_beg /na-boarding-service/
+  use_backend kubernetes if route_na-boarding-service_kubernetes_acl_path_beg
+  acl route_clover-boarding-service_kubernetes_acl_path_beg path_beg /clover-boarding-service/
+  use_backend kubernetes if route_clover-boarding-service_kubernetes_acl_path_beg
+  acl route_coreexperienceoperations_kubernetes_istio_ingress-core-experience-operations_acl_path_beg path_beg /coreexperienceoperations/
+  use_backend kubernetes_istio_ingress-core-experience-operations if route_coreexperienceoperations_kubernetes_istio_ingress-core-experience-operations_acl_path_beg
+  acl route_proxyservice_kubernetes_istio_ingress-proxyservice_acl_path_beg path_beg /proxyservice/
+  use_backend kubernetes_istio_ingress-proxyservice if route_proxyservice_kubernetes_istio_ingress-proxyservice_acl_path_beg
+  acl route_payeezyhcoapp_springboot-payeezyhcoapp_acl_path_beg path_beg /payeezyhcoapp/
+  use_backend springboot-payeezyhcoapp if route_payeezyhcoapp_springboot-payeezyhcoapp_acl_path_beg
+  acl route_job-execution_kubernetes_traefik_acl_path_beg path_beg /job-execution/
+  use_backend kubernetes_traefik if route_job-execution_kubernetes_traefik_acl_path_beg
+  acl route_billing-core_kubernetes_traefik_acl_path_beg path_beg /billing-core/
+  use_backend kubernetes_traefik if route_billing-core_kubernetes_traefik_acl_path_beg
+  acl route_billing-bookkeeper_kubernetes_traefik_acl_path_beg path_beg /billing-bookkeeper/
+  use_backend kubernetes_traefik if route_billing-bookkeeper_kubernetes_traefik_acl_path_beg
+  acl route_billing-event_kubernetes_traefik_acl_path_beg path_beg /billing-event/
+  use_backend kubernetes_traefik if route_billing-event_kubernetes_traefik_acl_path_beg
+  acl route_billing-event-generator_kubernetes_traefik_acl_path_beg path_beg /billing-event-generator/
+  use_backend kubernetes_traefik if route_billing-event-generator_kubernetes_traefik_acl_path_beg
+  acl route_emea-billing_kubernetes_istio_ingress-emea-billing_acl_path_beg path_beg /emea-billing/
+  use_backend kubernetes_istio_ingress-emea-billing if route_emea-billing_kubernetes_istio_ingress-emea-billing_acl_path_beg
+  acl route_crashanalytics_springboot-crashanalytics_acl_path_beg path_beg /crashanalytics/
+  use_backend springboot-crashanalytics if route_crashanalytics_springboot-crashanalytics_acl_path_beg
+  acl route_threeds_springboot-threeds_acl_path_beg path_beg /threeds/
+  use_backend springboot-threeds if route_threeds_springboot-threeds_acl_path_beg
+  acl route_developer_springboot-developer_acl_path_beg path_beg /developer/
+  use_backend springboot-developer if route_developer_springboot-developer_acl_path_beg
+  acl route_hierarchy_kubernetes_istio_ingress-hierarchy_acl_path_beg path_beg /hierarchy/
+  use_backend kubernetes_istio_ingress-hierarchy if route_hierarchy_kubernetes_istio_ingress-hierarchy_acl_path_beg
+  acl route_hierarchy-capability_kubernetes_istio_ingress-hierarchy-capability_acl_path_beg path_beg /hierarchy-capability/
+  use_backend kubernetes_istio_ingress-hierarchy-capability if route_hierarchy-capability_kubernetes_istio_ingress-hierarchy-capability_acl_path_beg
+  acl route_in-boarding-service_kubernetes_acl_path_beg path_beg /in-boarding-service/
+  use_backend kubernetes if route_in-boarding-service_kubernetes_acl_path_beg
+  acl route_boarding-history-service_kubernetes_acl_path_beg path_beg /boarding-history-service/
+  use_backend kubernetes if route_boarding-history-service_kubernetes_acl_path_beg
+  acl route_customerauth_kubernetes_istio_ingress-customerauth_acl_path_beg path_beg /customerauth/
+  use_backend kubernetes_istio_ingress-customerauth if route_customerauth_kubernetes_istio_ingress-customerauth_acl_path_beg
+  acl route_cards-service_kubernetes_istio_ingress-cards-service_acl_path_beg path_beg /cards-service/
+  use_backend kubernetes_istio_ingress-cards-service if route_cards-service_kubernetes_istio_ingress-cards-service_acl_path_beg
+  acl route_merchant-profile_kubernetes_istio_ingress-merchant-profile_acl_path_beg path_beg /merchant-profile/
+  use_backend kubernetes_istio_ingress-merchant-profile if route_merchant-profile_kubernetes_istio_ingress-merchant-profile_acl_path_beg
+  acl route_retail-service_kubernetes_istio_ingress-retail-service_acl_path_beg path_beg /retail-service/
+  use_backend kubernetes_istio_ingress-retail-service if route_retail-service_kubernetes_istio_ingress-retail-service_acl_path_beg
+  acl route_ptssettlement_springboot-ptssettlement_acl_path_beg path_beg /ptssettlement/
+  use_backend springboot-ptssettlement if route_ptssettlement_springboot-ptssettlement_acl_path_beg
+  acl route_inboarding_springboot-inboarding_acl_path_beg path_beg /inboarding/
+  use_backend springboot-inboarding if route_inboarding_springboot-inboarding_acl_path_beg
+  acl route_urlshortener_springboot-urlshortener_acl_path_beg path_beg /urlshortener/
+  use_backend springboot-urlshortener if route_urlshortener_springboot-urlshortener_acl_path_beg
+  acl route_businessdetails_springboot-businessdetails_acl_path_beg path_beg /businessdetails/
+  use_backend springboot-businessdetails if route_businessdetails_springboot-businessdetails_acl_path_beg
+  acl route_web-mobile_web_gcs_apps_dev_acl_path_reg path_reg ^/cl-mobile-opt-view(\/|$)
+  http-request set-var(txn.route_context) str("web-mobile") if route_web-mobile_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-mobile_web_gcs_apps_dev_acl_path_reg
+  acl route_web-scan-to-pay_web_gcs_apps_dev_acl_path_reg path_reg ^/scan-to-pay2(\/|$)
+  http-request set-var(txn.route_context) str("scan-to-pay") if route_web-scan-to-pay_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-scan-to-pay_web_gcs_apps_dev_acl_path_reg
+  acl route_consumer-web-profile_web_gcs_apps_dev_acl_path_reg path_reg ^/customer-profile(\/|$)
+  http-request set-var(txn.route_context) str("consumer-web-profile") if route_consumer-web-profile_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_consumer-web-profile_web_gcs_apps_dev_acl_path_reg
+  acl route_web-online-ordering-callback_web_gcs_apps_dev_acl_path_reg path_reg ^/online-ordering/__callback__$
+  http-request set-var(txn.route_context) str("web-order-ahead/public/__callback__/index.html") if route_web-online-ordering-callback_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-online-ordering-callback_web_gcs_apps_dev_acl_path_reg
+  acl route_web-order-ahead_web_gcs_apps_dev_acl_path_reg path_reg ^/online-ordering(\/|$)
+  http-request set-var(txn.route_context) str("web-order-ahead") if route_web-order-ahead_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-order-ahead_web_gcs_apps_dev_acl_path_reg
+  acl route_web-cs-portal_web_gcs_apps_dev_acl_path_reg path_reg ^/cs-(beta|home)(.*)$
+  http-request set-var(txn.route_context) str("cs-portal-web") if route_web-cs-portal_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-cs-portal_web_gcs_apps_dev_acl_path_reg
+  acl route_web-developer-platform_web_gcs_apps_dev_acl_path_reg path_reg ^/developer-home(?:/(.*))?$
+  http-request set-var(txn.route_context) str("developer-platform-web") if route_web-developer-platform_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-developer-platform_web_gcs_apps_dev_acl_path_reg
+  acl route_web-internal_web_gcs_apps_internal_dev_acl_path_reg path_reg ^/admin(?:/(.*))?$
+  http-request set-var(txn.route_context) str("web-internal") if route_web-internal_web_gcs_apps_internal_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_internal_dev if route_web-internal_web_gcs_apps_internal_dev_acl_path_reg
+  acl route_self-boarding-ui_web_gcs_apps_dev_acl_path_reg path_reg ^/apply(\/|$)
+  http-request set-var(txn.route_context) str("self-boarding-ui") if route_self-boarding-ui_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_self-boarding-ui_web_gcs_apps_dev_acl_path_reg
+  acl route_etlframework_springboot-etlframework_acl_path_beg path_beg /etlframework/
+  use_backend springboot-etlframework if route_etlframework_springboot-etlframework_acl_path_beg
+  acl route_ecomm_springboot-ecomm_acl_path_beg path_beg /ecomm/
+  use_backend springboot-ecomm if route_ecomm_springboot-ecomm_acl_path_beg
+  acl route_tokens_springboot-tokens_acl_path_beg path_beg /tokens/
+  use_backend springboot-tokens if route_tokens_springboot-tokens_acl_path_beg
+  acl route_globaldeveloperexperience_kubernetes_acl_path_beg path_beg /globaldeveloperexperience/
+  use_backend kubernetes if route_globaldeveloperexperience_kubernetes_acl_path_beg
+  acl route_fusionauth_kubernetes_istio_ingress_acl_path_beg path_beg /fusionauth/
+  use_backend kubernetes_istio_ingress if route_fusionauth_kubernetes_istio_ingress_acl_path_beg
+  acl route_reseller-services_kubernetes_istio_ingress-reseller-services_acl_path_beg path_beg /reseller-services/
+  use_backend kubernetes_istio_ingress-reseller-services if route_reseller-services_kubernetes_istio_ingress-reseller-services_acl_path_beg
+  acl route_retool_kubernetes_istio_ingress-retool_acl_path_beg path_beg /retool/
+  use_backend kubernetes_istio_ingress-retool if route_retool_kubernetes_istio_ingress-retool_acl_path_beg
+  acl route_dart-service_kubernetes_istio_ingress-dart-service_acl_path_beg path_beg /dart-service
+  use_backend kubernetes_istio_ingress-dart-service if route_dart-service_kubernetes_istio_ingress-dart-service_acl_path_beg
+  acl route_developer-service_kubernetes_istio_ingress-developer-service_acl_path_beg path_beg /developer-service/
+  use_backend kubernetes_istio_ingress-developer-service if route_developer-service_kubernetes_istio_ingress-developer-service_acl_path_beg
+  acl route_developer-apps-service_kubernetes_traefik_acl_path_beg path_beg /developer-apps-service/
+  use_backend kubernetes_traefik if route_developer-apps-service_kubernetes_traefik_acl_path_beg
+  acl route_link-inventory_kubernetes_acl_path_beg path_beg /link-inventory
+  use_backend kubernetes if route_link-inventory_kubernetes_acl_path_beg
+  acl route_inventory-service_kubernetes_istio_ingress-inventory-service_acl_path_beg path_beg /inventory-service/
+  use_backend kubernetes_istio_ingress-inventory-service if route_inventory-service_kubernetes_istio_ingress-inventory-service_acl_path_beg
+  acl route_emea-boarding-service_kubernetes_istio_ingress-emea-boarding-service_acl_path_beg path_beg /emea-boarding-service/
+  use_backend kubernetes_istio_ingress-emea-boarding-service if route_emea-boarding-service_kubernetes_istio_ingress-emea-boarding-service_acl_path_beg
+  acl route_ipblocking-service_kubernetes_istio_ingress-ipblocking-service_acl_path_beg path_beg /ipblocking-service/
+  use_backend kubernetes_istio_ingress-ipblocking-service if route_ipblocking-service_kubernetes_istio_ingress-ipblocking-service_acl_path_beg
+  acl route_fiservreporting_kubernetes_istio_ingress-fiservreporting_acl_path_beg path_beg /fiservreporting
+  use_backend kubernetes_istio_ingress-fiservreporting if route_fiservreporting_kubernetes_istio_ingress-fiservreporting_acl_path_beg
+  acl route_payment-orchestration-service_kubernetes_traefik_acl_path_beg path_beg /payment-orchestration-service/
+  use_backend kubernetes_traefik if route_payment-orchestration-service_kubernetes_traefik_acl_path_beg
+  acl route_legacy-web-react-assets_web_static_legacy_assets_dev_acl_path_beg path_beg /web-react/assets/
+  use_backend web_static_legacy_assets_dev if route_legacy-web-react-assets_web_static_legacy_assets_dev_acl_path_beg
+  acl route_taskservice_kubernetes_istio_ingress-taskservice_acl_path_beg path_beg /taskservice/
+  use_backend kubernetes_istio_ingress-taskservice if route_taskservice_kubernetes_istio_ingress-taskservice_acl_path_beg
+  acl route_dining-service_kubernetes_traefik_acl_path_beg path_beg /dining-service/
+  use_backend kubernetes_traefik if route_dining-service_kubernetes_traefik_acl_path_beg
+  acl route_fx-service_kubernetes_istio_ingress-fx-service_acl_path_beg path_beg /fx-service/
+  use_backend kubernetes_istio_ingress-fx-service if route_fx-service_kubernetes_istio_ingress-fx-service_acl_path_beg
+  acl route_web-portal_web_gcs_apps_dev_acl_path_reg path_reg ^/(dashboard|virtual-terminal|reporting-beta|login|multi-location|dining|scan-to-pay|tap-to-pay|capital|claim|agreements|disputes|privacy-policies|plan-manager|invoice-manager|onboarding|getsupport|retail-ordering|gift-cards|finances|webchat|profile|appmarket)(.*)$
+  http-request set-var(txn.route_context) str("web-portal") if route_web-portal_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-portal_web_gcs_apps_dev_acl_path_reg
+  acl route_web-checkout_web_gcs_apps_dev_acl_path_reg path_reg ^/(checkout|pay-widgets)(?:/(.*))?$
+  http-request set-var(txn.route_context) str("web-checkout") if route_web-checkout_web_gcs_apps_dev_acl_path_reg !{ var(txn.route_context) -m found }
+  use_backend web_gcs_apps_dev if route_web-checkout_web_gcs_apps_dev_acl_path_reg
+  acl route_cgosupport-service_kubernetes_istio_ingress-cgosupport-service_acl_path_beg path_beg /cgosupport-service/
+  use_backend kubernetes_istio_ingress-cgosupport-service if route_cgosupport-service_kubernetes_istio_ingress-cgosupport-service_acl_path_beg
+  acl route_clodat_kubernetes_istio_ingress-clodat_acl_path_beg path_beg /clodat/
+  use_backend kubernetes_istio_ingress-clodat if route_clodat_kubernetes_istio_ingress-clodat_acl_path_beg
+  acl route_everything_else_web_acl_hdrhost-i hdr(host) -i stg3.dev.clover.com
+  use_backend web if route_everything_else_web_acl_hdrhost-i
+  default_backend serve-404
+  http-request set-var(txn.host) hdr(Host)
+  # regex: scheme (user) (host) (port) (everything else)
+  http-response replace-header Location ^[a-zA-Z][a-zA-Z0-9+\-.]*://([a-zA-Z0-9\-._~%!$&'()*+,;=]+@)?([a-zA-A0-9\-._~%]+|\[[a-z0-9\-._~%!$&'()*+,;=:]+\])(:[0-9]+)?(.*) https://\2\4 if { status 301 } || { status 302 }
+
+frontend haproxy_status
+  bind 0.0.0.0:9876
+  mode http
+  acl use-lua-health-check-script path_beg /slb_health_check
+  use_backend lua-healthcheck if use-lua-health-check-script
+  capture request header Host len 30
+  capture request header Referer len 128
+  capture request header User-Agent len 128
+  capture request header X-Clover-Request-Id len 36
+  option httpclose
+  stats uri /
+  stats show-legends
+  stats show-node
+
+backend api
+  balance roundrobin
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  http-check disable-on-404
+  option httpchk GET /adm/_status HTTP/1.1
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  rspadd Strict-Transport-Security:\ max-age=15897600
+  timeout server 57s
+  timeout http-keep-alive 60s
+  server stg3-cos01.dev.pdx10.clover.network stg3-cos01.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+  server stg3-cos02.dev.pdx10.clover.network stg3-cos02.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+
+backend apigw
+  balance roundrobin
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  rspadd X-Robots-Tag:\ none
+  timeout server 57s
+  timeout http-keep-alive 60s
+  server stg3-apigateway01.dev.pdx10.clover.network stg3-apigateway01.dev.pdx10.clover.network:8028 check port 8991 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+  server stg3-apigateway02.dev.pdx10.clover.network stg3-apigateway02.dev.pdx10.clover.network:8028 check port 8991 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+
+backend apk
+  balance first
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  http-check disable-on-404
+  option httpchk GET /adm/_status HTTP/1.1
+  option http-server-close
+  timeout server 120s
+  timeout http-keep-alive 3s
+  server stg3-cos01.dev.pdx10.clover.network stg3-cos01.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 2 fall 1 maxconn 10000 maxqueue 100 on-error mark-down slowstart 15s weight 10
+  server stg3-cos02.dev.pdx10.clover.network stg3-cos02.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 2 fall 1 maxconn 10000 maxqueue 100 on-error mark-down slowstart 15s weight 10
+
+backend auth
+  balance source
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  hash-type consistent
+  http-check disable-on-404
+  option httpchk GET /adm/_status HTTP/1.1
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  timeout server 37s
+  timeout http-keep-alive 60s
+  server stg3-auth01.dev.pdx10.clover.network stg3-auth01.dev.pdx10.clover.network:8023 check port 8996 inter 5s rise 2 fall 1 maxconn 3000 maxqueue 1000 on-error mark-down slowstart 20s weight 10
+
+backend billing
+  balance roundrobin
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  http-check disable-on-404
+  option httpchk GET /billing/v1/adm/status HTTP/1.1
+  option http-server-close
+  timeout http-keep-alive 60s
+  server stg3-bill01.dev.pdx10.clover.network stg3-bill01.dev.pdx10.clover.network:8950 check port 9950 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 14
+  server stg3-bill02.dev.pdx10.clover.network stg3-bill02.dev.pdx10.clover.network:8950 check port 9950 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 14
+
+backend billing_batch
+  balance roundrobin
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  http-check disable-on-404
+  option httpchk GET /billing/v1/adm/status HTTP/1.1
+  option http-server-close
+  timeout http-keep-alive 60s
+  server stg3-billbatch01.dev.pdx10.clover.network stg3-billbatch01.dev.pdx10.clover.network:8950 check port 9950 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 14
+
+backend client_devices
+  balance roundrobin
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  http-check disable-on-404
+  option httpchk GET /adm/_status HTTP/1.1
+  option http-server-close
+  rspadd X-Frame-Options:\ SAMEORIGIN
+  timeout server 57s
+  timeout http-keep-alive 60s
+  server stg3-cos01.dev.pdx10.clover.network stg3-cos01.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 4 fall 1 maxconn 10000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+  server stg3-cos02.dev.pdx10.clover.network stg3-cos02.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 4 fall 1 maxconn 10000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+
+backend clientanalytics_kubernetes
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server clientanalytics.ilb.dev.pdx10.clover.network clientanalytics.ilb.dev.pdx10.clover.network:80 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s
+
+backend clovercapital
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /adm/status HTTP/1.0
+  rspadd X-Robots-Tag:\ none
+  server clovercapital01.dev.pdx10.clover.network clovercapital01.dev.pdx10.clover.network:8034 check port 8985 inter 2s rise 4 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s
+  server clovercapital02.dev.pdx10.clover.network clovercapital02.dev.pdx10.clover.network:8034 check port 8985 inter 2s rise 4 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s
+
+backend kubernetes
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server dev-us-west1-cluster-traefik.slb.dev.pdx13.clover.network dev-us-west1-cluster-traefik.slb.dev.pdx13.clover.network:80 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s
+
+backend kubernetes_istio_ingress
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-cards-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-cgosupport-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-clodat
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-consumerindexing
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-core-experience-operations
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-customerauth
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-customers
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server dev-us-west1-cluster-istio-ingress.dev.pdx13.clover.network dev-us-west1-cluster-istio-ingress.dev.pdx13.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(dev-us-west1-cluster-istio-ingress.dev.pdx13.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-dart-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-developer-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-digitalcatalog
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-emea-billing
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-emea-boarding-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-feedback-server-microservice
+  balance roundrobin
+  http-request set-path %[path,regsub(^/feedback,/feedback-server-microservice,)]
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-fiservreporting
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-fx-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-genesisapi
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-growth-api
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-hierarchy
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-hierarchy-capability
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-inventory-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-ipblocking-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-merchant-profile
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-offers-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-proxyservice
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-reseller-services
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-retail-service
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-retool
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-selfboardingapi
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_istio_ingress-taskservice
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(nastaging-usc1-cluster-istio-ingress.dev.dsm09.clover.network) ssl verify required
+
+backend kubernetes_traefik
+  balance roundrobin
+  rspadd X-Robots-Tag:\ none
+  server dev-us-west1-cluster-traefik.slb.dev.pdx13.clover.network dev-us-west1-cluster-traefik.slb.dev.pdx13.clover.network:80 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s
+
+backend lua-healthcheck
+  http-request use-service lua.status_service
+  mode http
+
+backend notification
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /adm/status HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server notification01.dev.pdx10.clover.network notification01.dev.pdx10.clover.network:8046 check port 8973 inter 2s rise 4 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s
+  server notification02.dev.pdx10.clover.network notification02.dev.pdx10.clover.network:8046 check port 8973 inter 2s rise 4 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s
+
+backend push
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /adm/_status HTTP/1.1
+  timeout tunnel 3985s
+  timeout server 305s
+  server stg3-push01.dev.pdx10.clover.network stg3-push01.dev.pdx10.clover.network:8021 check port 8998 inter 10s rise 2 fall 1 maxconn 20000 maxqueue 100 on-error mark-down slowstart 10s
+  server stg3-push02.dev.pdx10.clover.network stg3-push02.dev.pdx10.clover.network:8021 check port 8998 inter 10s rise 2 fall 1 maxconn 20000 maxqueue 100 on-error mark-down slowstart 10s
+
+backend serve-200
+  errorfile 503 /opt/clover/haproxy/etc/http/200_emptymap.http
+  mode http
+
+backend serve-204
+  errorfile 503 /opt/clover/haproxy/etc/http/204.http
+  mode http
+
+backend serve-403
+  errorfile 503 /opt/clover/haproxy/etc/http/403.http
+  mode http
+
+backend serve-404
+  errorfile 503 /opt/clover/haproxy/etc/http/404.http
+  mode http
+
+backend serve-499
+  errorfile 503 /opt/clover/haproxy/etc/http/499.http
+  mode http
+
+backend serve-maintenance
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  mode http
+
+backend springboot-agreement
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/agreement HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server agreement01.dev.pdx10.clover.network agreement01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server agreement02.dev.pdx10.clover.network agreement02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-bankdetails
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/bankdetails HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server bankdetails01.dev.pdx10.clover.network bankdetails01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server bankdetails02.dev.pdx10.clover.network bankdetails02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-binlookupservice
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/binlookupservice HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server binlookupservice01.dev.pdx10.clover.network binlookupservice01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server binlookupservice02.dev.pdx10.clover.network binlookupservice02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-businessdetails
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/businessdetails HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server businessdetails01.dev.pdx10.clover.network businessdetails01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server businessdetails02.dev.pdx10.clover.network businessdetails02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-cardpresentapi
+  balance hdr(x-clover-device-id)
+  hash-type consistent
+  http-check disable-on-404
+  http-response add-header X-Robots-Tag none
+  option http-server-close
+  timeout server 300s
+  server dev-us-west1-cluster-istio-ingress.dev.pdx13.clover.network dev-us-west1-cluster-istio-ingress.dev.pdx13.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s sni str(dev-us-west1-cluster-istio-ingress.dev.pdx13.clover.network) ssl verify none
+
+backend springboot-certrenewer
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/certrenewer HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server certrenewer01.dev.pdx10.clover.network certrenewer01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server certrenewer02.dev.pdx10.clover.network certrenewer02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-cgosupport
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/cgosupport HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server cgosupport01.dev.pdx10.clover.network cgosupport01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server cgosupport02.dev.pdx10.clover.network cgosupport02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-cloudtargetlookup
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/cloudtargetlookup HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server cloudtargetlookup01.dev.pdx10.clover.network cloudtargetlookup01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server cloudtargetlookup02.dev.pdx10.clover.network cloudtargetlookup02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-copilotintegration
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/copilotintegration HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server copilotintegration01.dev.pdx10.clover.network copilotintegration01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server copilotintegration02.dev.pdx10.clover.network copilotintegration02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-crashanalytics
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/crashanalytics HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server crashanalytics01.dev.pdx10.clover.network crashanalytics01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server crashanalytics02.dev.pdx10.clover.network crashanalytics02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-dataprotection
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/dataprotection HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server dataprotection01.dev.pdx10.clover.network dataprotection01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server dataprotection02.dev.pdx10.clover.network dataprotection02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-deliveryservice
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/deliveryservice HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server deliveryservice01.dev.pdx10.clover.network deliveryservice01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server deliveryservice02.dev.pdx10.clover.network deliveryservice02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-developer
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/developer HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server developer01.dev.pdx10.clover.network developer01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server developer02.dev.pdx10.clover.network developer02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-disputes
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/disputes HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server disputes01.dev.pdx10.clover.network disputes01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server disputes02.dev.pdx10.clover.network disputes02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-earlymerchantexperience
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/earlymerchantexperience HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server earlymerchantexperience01.dev.pdx10.clover.network earlymerchantexperience01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server earlymerchantexperience02.dev.pdx10.clover.network earlymerchantexperience02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-ecomm
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/ecomm HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server ecomm01.dev.pdx10.clover.network ecomm01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server ecomm02.dev.pdx10.clover.network ecomm02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-etlframework
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/etlframework HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server etlframework01.dev.pdx10.clover.network etlframework01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server etlframework02.dev.pdx10.clover.network etlframework02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-filterservice
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/filterservice HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server filterservice01.dev.pdx10.clover.network filterservice01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server filterservice02.dev.pdx10.clover.network filterservice02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-googlefo
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/googlefo HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server googlefo01.dev.pdx10.clover.network googlefo01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server googlefo02.dev.pdx10.clover.network googlefo02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-googlefofeeder
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/googlefofeeder HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server googlefofeeder01.dev.pdx10.clover.network googlefofeeder01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server googlefofeeder02.dev.pdx10.clover.network googlefofeeder02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-inboarding
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/inboarding HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server inboarding01.dev.pdx10.clover.network inboarding01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server inboarding02.dev.pdx10.clover.network inboarding02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-invoicingcheckoutservice
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/invoicingcheckoutservice HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server invoicingcheckoutservice01.dev.pdx10.clover.network invoicingcheckoutservice01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server invoicingcheckoutservice02.dev.pdx10.clover.network invoicingcheckoutservice02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-mlcevent
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/mlcevent HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server mlcevent01.dev.pdx10.clover.network mlcevent01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server mlcevent02.dev.pdx10.clover.network mlcevent02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-oloplatform
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/oloplatform HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server oloplatform01.dev.pdx10.clover.network oloplatform01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server oloplatform02.dev.pdx10.clover.network oloplatform02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-oloservice
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/oloservice HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server oloservice01.dev.pdx10.clover.network oloservice01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server oloservice02.dev.pdx10.clover.network oloservice02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-partnerreporting
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/partnerreporting HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server partnerreporting01.dev.pdx10.clover.network partnerreporting01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server partnerreporting02.dev.pdx10.clover.network partnerreporting02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-partnervas
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/partnervas HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server partnervas01.dev.pdx10.clover.network partnervas01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server partnervas02.dev.pdx10.clover.network partnervas02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-payeezyhcoapp
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/payeezyhcoapp HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server payeezyhcoapp01.dev.pdx10.clover.network payeezyhcoapp01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server payeezyhcoapp02.dev.pdx10.clover.network payeezyhcoapp02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-ptssettlement
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/ptssettlement HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server ptssettlement01.dev.pdx10.clover.network ptssettlement01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server ptssettlement02.dev.pdx10.clover.network ptssettlement02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-pyzdashboard
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/pyzdashboard HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server pyzdashboard01.dev.pdx10.clover.network pyzdashboard01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server pyzdashboard02.dev.pdx10.clover.network pyzdashboard02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-pzytranslationapi
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/pzytranslationapi HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server pzytranslationapi01.dev.pdx10.clover.network pzytranslationapi01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server pzytranslationapi02.dev.pdx10.clover.network pzytranslationapi02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-rapiddeposit
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/rapiddeposit HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server rapiddeposit01.dev.pdx10.clover.network rapiddeposit01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server rapiddeposit02.dev.pdx10.clover.network rapiddeposit02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-recurring
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/recurring HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server recurring01.dev.pdx10.clover.network recurring01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server recurring02.dev.pdx10.clover.network recurring02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-securereportdecoder
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/securereportdecoder HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server securereportdecoder01.dev.pdx10.clover.network securereportdecoder01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server securereportdecoder02.dev.pdx10.clover.network securereportdecoder02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-threeds
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/threeds HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server threeds01.dev.pdx10.clover.network threeds01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server threeds02.dev.pdx10.clover.network threeds02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-tokens
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/tokens HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server tokens01.dev.pdx10.clover.network tokens01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server tokens02.dev.pdx10.clover.network tokens02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-unifiedeventservice
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/unifiedeventservice HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server unifiedeventservice01.dev.pdx10.clover.network unifiedeventservice01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server unifiedeventservice02.dev.pdx10.clover.network unifiedeventservice02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-urlshortener
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/urlshortener HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server urlshortener01.dev.pdx10.clover.network urlshortener01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server urlshortener02.dev.pdx10.clover.network urlshortener02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend springboot-webonboarding
+  balance roundrobin
+  http-check disable-on-404
+  option httpchk GET /ping/webonboarding HTTP/1.0
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  server webonboarding01.dev.pdx10.clover.network webonboarding01.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+  server webonboarding02.dev.pdx10.clover.network webonboarding02.dev.pdx10.clover.network:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt check check-ssl inter 5s rise 4 fall 1 crt /etc/pki/tls/private/stg3-slbomnibus01.dev.pdx10.clover.network-bundle.pem maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s ssl verify none
+
+backend sso
+  balance roundrobin
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  http-check disable-on-404
+  http-response replace-header set-cookie ^(.*)$ \1;SameSite=None if { status 200 } { res.hdr(Set-Cookie) -m found }
+  option httpchk GET /adm/_status HTTP/1.1
+  option http-server-close
+  rspadd X-Robots-Tag:\ none
+  timeout server 57s
+  timeout http-keep-alive 60s
+  server stg3-cos01.dev.pdx10.clover.network stg3-cos01.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+  server stg3-cos02.dev.pdx10.clover.network stg3-cos02.dev.pdx10.clover.network:8020 check port 8999 inter 5s rise 2 fall 1 maxconn 5000 maxqueue 100 on-error mark-down slowstart 20s weight 100
+
+backend support
+  balance url_param token
+  errorfile 503 /opt/clover/haproxy/etc/http/maintenance.http
+  http-check disable-on-404
+  option httpchk GET /adm/_status HTTP/1.1
+  timeout tunnel 3985s
+  server support01.dev.pdx10.clover.network support01.dev.pdx10.clover.network:8022 check port 8997 inter 15s rise 3 fall 1 maxconn 500 maxqueue 100 on-error mark-down slowstart 5s
+  server support02.dev.pdx10.clover.network support02.dev.pdx10.clover.network:8022 check port 8997 inter 15s rise 3 fall 1 maxconn 500 maxqueue 100 on-error mark-down slowstart 5s
+
+backend web
+  balance roundrobin
+  http-response set-header Content-Security-Policy "img-src blob: data: 'self' firstdatacloverwebsite.122.2o7.net bat.bing.com res.cloudinary.com dxkdvuv3hanyu.cloudfront.net *.clover.com cloverstatic.com dev.cloverstatic.com images.contentful.com mver.agkn.com *.ctfassets.net googleads.g.doubleclick.net stats.g.doubleclick.net www.facebook.com connect.facebook.net www.google-analytics.com lh3.googleusercontent.com maps.googleapis.com www.google.com www.google.com.pr www.google.com.br www.google.com.co www.google.ca www.google.de www.google.ie www.google.co.uk www.google.co.in www.google.co.id www.googletagmanager.com *.gstatic.com heapanalytics.com script.hotjar.com static.intercomassets.com js.intercomcdn.com *.intercomcdn.com uploads.intercomusercontent.com *.online-metrix.net *.optimizely.com *.perka.com *.rfihub.com api.swiftype.com pixel.quantserve.com apintego.com app.nav.com *.t.eloqua.com track.hubspot.com play.vidyard.com cdn.vidyard.com px.ads.linkedin.com p.adsymptotic.com amplify.outbrain.com amplifypixel.outbrain.com tr.outbrain.com data.pendo.io recaptcha.net js.adsrvr.org www.redditstatic.com alb.reddit.com ct.pinterest.com s.pinimg.com www.linkedin.com s.amazon-adsystem.com *.walkme.com d3sbxpiag177w8.cloudfront.net s3.walkmeusercontent.com data.adxcel-ec2.com s.yimg.com sp.analytics.yahoo.com *.mydisputemanager.com *.evidon.com *.qualtrics.com cx.atdmt.com *.eyeota.net *.ggpht.com *.googleapis.com; font-src data: 'self' maxcdn.bootstrapcdn.com *.clover.com cloverstatic.com dev.cloverstatic.com fonts.gstatic.com heapanalytics.com script.hotjar.com js.intercomcdn.com use.fontawesome.com *.walkme.com *.qualtrics.com; frame-src mailto: 'self' tel: players.brightcove.net *.clover.com cloverstatic.com dev.cloverstatic.com bid.g.doubleclick.net *.fls.doubleclick.net www.facebook.com accounts.google.com docs.google.com optimize.google.com www.google.com boards.greenhouse.io vars.hotjar.com intercom-sheets.com h.online-metrix.net *.cdn.optimizely.com *.optimizely.com *.perka.com player.vimeo.com www.youtube.com *.ytimg.com play.vidyard.com *.lendingfront.com s.amazon-adsystem.com *.walkme.com mainstreetinsights.firstdata.com *.mydisputemanager.com insight.adsrvr.org sync-flow.codat.io; connect-src 'self' bat.bing.com *.clover.com cloverstatic.com dev.cloverstatic.com wss://*.clover.com *.contentful.com *.ctfassets.net googleads.g.doubleclick.net stats.g.doubleclick.net secure.geonames.org www.facebook.com www.google-analytics.com apis.google.com storage.googleapis.com www.google.com *.greenhouse.io heapanalytics.com vc.hotjar.io *.hotjar.com wss://*.hotjar.com uploads.intercomcdn.com uploads.intercomusercontent.com *.intercom.io wss://*.intercom.io h.online-metrix.net *.optimizely.com *.perka.com *.sentry.io sentry.io api.swiftype.com d8a92f8280d84184bb69a3a4b74b61d1.app-search.us-west-2.aws.found.io collection.bgalytics.com *.tt.omtrdc.net oamportal.fdvs.com *.donorschoose.org collection.sperse.io data.pendo.io recaptcha.net ct.pinterest.com *.walkme.com ordering.app s.yimg.com *.mydisputemanager.com *.evidon.com order-ahead-network-production.herokuapp.com api.thelevelup.com wss://ws4.hotjar.com *.qualtrics.com helpcenter-v3.ent.us-west-2.aws.found.io helpcenter-v3-56e522.ent.us-west-2.aws.found.io *.datadoghq.com; default-src 'self' *.clover.com cloverstatic.com dev.cloverstatic.com; script-src 'self' 'unsafe-eval' 'unsafe-inline' bat.bing.com cdnjs.cloudflare.com *.clover.com cloverstatic.com dev.cloverstatic.com nifegwy.neustar.biz googleads.g.doubleclick.net stats.g.doubleclick.net connect.facebook.net www.googleadservices.com www.google-analytics.com apis.google.com maps.googleapis.com tagmanager.google.com optimize.google.com www.google.com www.googletagmanager.com tracker.gaconnector.com *.greenhouse.io www.gstatic.com heapanalytics.com cdn.heapanalytics.com script.hotjar.com static.hotjar.com mpsnare.iesnare.com js.intercomcdn.com widget.intercom.io solutions.invocacdn.com pnapi.invoca.net h.online-metrix.net cdn.optimizely.com *.optimizely.com rules.quantcount.com cdn.ravenjs.com tags.tiqcdn.com www.youtube.com secure.quantserve.com *.ytimg.com *.t.eloqua.com play.vidyard.com apps.mypurecloud.com secure.adnxs.com js.hs-scripts.com js.hs-analytics.net analytics.bgalytics.com img.en25.com snap.licdn.com amplify.outbrain.com app.pendo.io cdn.pendo.io data.pendo.io pendo-io-static.storage.googleapis.com recaptcha.net js.adsrvr.org www.redditstatic.com s.pinimg.com *.walkme.com d3sbxpiag177w8.cloudfront.net s3.walkmeusercontent.com s.yimg.com sp.analytics.yahoo.com *.mydisputemanager.com *.evidon.com *.qualtrics.com munchkin.marketo.net; style-src 'self' 'unsafe-inline' maxcdn.bootstrapcdn.com cdnjs.cloudflare.com *.clover.com cloverstatic.com dev.cloverstatic.com fonts.googleapis.com tagmanager.google.com optimize.google.com heapanalytics.com *.natwest-tyl.com *.usetyl.com *.walkme.com d3sbxpiag177w8.cloudfront.net s3.walkmeusercontent.com *.mydisputemanager.com *.qualtrics.com *.pollinate.dev; media-src 'self' *.clover.com cloverstatic.com dev.cloverstatic.com *.ctfassets.net js.intercomcdn.com cdn.vidyard.com gateway.zscloud.net commondatastorage.googleapis.com; object-src 'self' *.clover.com cloverstatic.com dev.cloverstatic.com h.online-metrix.net vd.vidoplay.com; frame-ancestors *.clover.com cloverstatic.com dev.cloverstatic.com *.natwest-tyl.com *.usetyl.com *.optimizely.com *.perka.com *.pollinate.dev; child-src intercom-sheets.com player.vimeo.com www.youtube.com; report-uri ;" if { res.hdr(Content-Type) -m sub html }
+  option http-server-close
+  rspadd Strict-Transport-Security:\ max-age=15897600
+  rspadd Access-Control-Allow-Origin:\ "*" if { capture.req.uri -m end /gsha }
+  rspdel ^Server:
+  stats uri /slbstats993
+  stats auth stats:stats4you2
+  timeout server 5s
+  timeout http-keep-alive 30s
+  server 127.0.0.1 127.0.0.1:8024 maxconn 5000 maxqueue 100
+
+backend web_gcs_apps_dev
+  http-request redirect code 301 location %[path]?%[query] if !METH_GET
+  http-request set-header Host storage.googleapis.com
+  http-request set-path /clover-dev-web-assets/apps/%[var(txn.route_context)] if { var(txn.route_context) -m found } { var(txn.route_context) -m sub / }
+  http-request set-path /clover-dev-web-assets/apps/%[var(txn.route_context)]/public/index.html if { var(txn.route_context) -m found } !{ var(txn.route_context) -m sub / }
+  http-request set-path /clover-dev-web-assets/_global/not-found.html if !{ var(txn.route_context) -m found }
+  http-response add-header Content-Security-Policy %[res.hdr(x-goog-meta-csp)] if { res.hdr(x-goog-meta-csp) -m found }
+  http-response add-header Strict-Transport-Security max-age=31536000
+  http-response del-header x-goog-meta-csp if { res.hdr(x-goog-meta-csp) -m found }
+  http-response set-status 404 if !{ var(txn.route_context) -m found }
+  server storage.googleapis.com storage.googleapis.com:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt ssl verify required
+
+backend web_gcs_apps_internal_dev
+  http-request redirect code 301 location %[path]?%[query] if !METH_GET
+  http-request set-header Host storage.googleapis.com
+  http-request set-path /clover-dev-web-assets/internal-apps/%[var(txn.route_context)] if { var(txn.route_context) -m found } { var(txn.route_context) -m sub / }
+  http-request set-path /clover-dev-web-assets/internal-apps/%[var(txn.route_context)]/public/index.html if { var(txn.route_context) -m found } !{ var(txn.route_context) -m sub / }
+  http-request set-path /clover-dev-web-assets/_global/not-found.html if !{ var(txn.route_context) -m found }
+  http-response add-header Content-Security-Policy %[res.hdr(x-goog-meta-csp)] if { res.hdr(x-goog-meta-csp) -m found }
+  http-response add-header Strict-Transport-Security max-age=31536000
+  http-response del-header x-goog-meta-csp if { res.hdr(x-goog-meta-csp) -m found }
+  http-response set-status 404 if !{ var(txn.route_context) -m found }
+  server storage.googleapis.com storage.googleapis.com:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt ssl verify required
+
+backend web_static_legacy_assets_dev
+  http-request redirect code 301 location %[path]?%[query] if !METH_GET
+  http-request set-header Host storage.googleapis.com
+  http-request set-path /clover-dev-static-content%[path,regsub(^/web-react/assets,/legacy-assets,)]
+  http-response add-header Strict-Transport-Security max-age=31536000
+  server storage.googleapis.com storage.googleapis.com:443 ca-file /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt ssl verify required
+
+backend webping
+  balance roundrobin
+  option http-server-close
+  rspdel ^Server:
+  timeout server 5s
+  server 127.0.0.1 127.0.0.1:8024 maxconn 5000 maxqueue 100
+
+backend www_https_redirect
+  mode http
+  redirect prefix https://stg3.dev.clover.com code 301
